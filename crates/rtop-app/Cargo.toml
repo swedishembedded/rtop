@@ -1,0 +1,20 @@
+[package]
+name = "rtop-app"
+description = "Deterministic application state machine of rtop: navigation, Vim modes, projections, commands"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rtop-core.workspace = true
+rtop-collectors.workspace = true
+rtop-actions.workspace = true
+rtop-linux.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

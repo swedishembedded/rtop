@@ -418,6 +418,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rtop-app"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "rtop-actions",
+ "rtop-collectors",
+ "rtop-core",
+ "rtop-linux",
+]
+
+[[package]]
 name = "rtop-collectors"
 version = "0.1.0"
 dependencies = [
