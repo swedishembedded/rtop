@@ -6,7 +6,7 @@ containers, GPUs, sensors and security events into **one connected telemetry
 graph**, shows that graph in a keyboard- and mouse-driven terminal UI, and
 prints the same graph as YAML or JSON with `rtop --stats`.
 
-![rtop overview: resource tiles, process table and insights](docs/screenshots/overview.png)
+![rtop overview: resource tiles, process table and insights](docs/screenshots/overview.webp)
 
 *All screenshots in this README show `rtop --demo`: a built-in, fully invented
 machine. No real system appears in them.*
@@ -135,48 +135,48 @@ rtop --stats --json | jq '.nodes[] | select(.kind == "host") | .metrics.cpu_usag
 **Process tree** (`t` in view `1`). CPU is in the per-CPU convention (100% =
 one CPU). The red `D` marks a process in uninterruptible kernel wait.
 
-![Process tree](docs/screenshots/processes-tree.png)
+![Process tree](docs/screenshots/processes-tree.webp)
 
 **CPU** (`2`). Per-logical-CPU usage and frequency with performance (`P`) and
 efficiency (`E`) core types read from sysfs, next to scheduler statistics and
 CPU pressure.
 
-![CPU view with hybrid core types](docs/screenshots/cpu.png)
+![CPU view with hybrid core types](docs/screenshots/cpu.webp)
 
 **Network** (`5`). Process-to-process communication with protocol, rate and
 evidence; every socket with its owner; interface counters. Unix-socket traffic
 shows `N/A` because the kernel keeps no byte counters for it.
 
-![Network view: communication, connections, interfaces](docs/screenshots/network.png)
+![Network view: communication, connections, interfaces](docs/screenshots/network.webp)
 
 **Containers and services** (`6`). cgroup v2 accounting joined with Docker
 metadata. `WORKSET` values carry `~` because they are estimates; an unlimited
 memory limit is `N/A`, not `0`.
 
-![Containers and systemd services](docs/screenshots/containers.png)
+![Containers and systemd services](docs/screenshots/containers.webp)
 
 **Inspecting a process** (`Enter`). Metrics with descriptions, relationships
 with traffic and evidence, and on-demand deep inspection: `smaps_rollup`
 memory, threads, open descriptors, namespaces and resource limits.
 
-![Process inspector](docs/screenshots/inspect-process.png)
+![Process inspector](docs/screenshots/inspect-process.webp)
 
 **Security and telemetry health** (`8`). Kernel-log denials, OOM kills and
 firewall log matches, conntrack counters, and the state of every collector.
 Per-rule firewall counters are honestly `N/A (unsup)`.
 
-![Security events and telemetry sources](docs/screenshots/security.png)
+![Security events and telemetry sources](docs/screenshots/security.webp)
 
 **Actions.** `m` or a right click opens the action menu; `x` asks before
 sending SIGTERM and states how the signal will be delivered.
 
-![Action menu](docs/screenshots/context-menu.png)
+![Action menu](docs/screenshots/context-menu.webp)
 
-![Terminate confirmation](docs/screenshots/confirm-terminate.png)
+![Terminate confirmation](docs/screenshots/confirm-terminate.webp)
 
 **Small terminals.** Layouts adapt to the available size. This is 80×24:
 
-![Overview at 80x24](docs/screenshots/overview-compact.png)
+![Overview at 80x24](docs/screenshots/overview-compact.webp)
 
 ## Install
 
