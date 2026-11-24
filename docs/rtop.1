@@ -1,0 +1,55 @@
+.\" Copyright (c) 2026 Martin Schröder <info@swedishembedded.com>
+.\" SPDX-License-Identifier: Apache-2.0
+.TH RTOP 1 "2026" "rtop" "User Commands"
+.SH NAME
+rtop \- real-time Linux telemetry graph and process manager
+.SH SYNOPSIS
+.B rtop
+[\fB\-\-demo\fR | \fB\-\-sysroot\fR \fIDIR\fR] [\fB\-\-read\-only\fR] [\fB\-\-no\-mouse\fR]
+.br
+.B rtop \-\-stats
+[\fB\-\-json\fR] [\fB\-\-interval\fR \fIDURATION\fR] [\fB\-\-timeout\fR \fIDURATION\fR] [\fB\-\-strict\fR]
+.SH DESCRIPTION
+.B rtop
+models processes, containers, sockets, devices, sensors and security events
+as one connected graph. Without options it opens an interactive terminal
+interface; with \fB\-\-stats\fR it prints the graph as YAML (or JSON) and exits.
+.SH OPTIONS
+.TP
+.B \-\-stats
+Collect two samples separated by the interval and print the graph on stdout.
+.TP
+.B \-\-json
+With \-\-stats, print JSON instead of YAML.
+.TP
+.BI \-\-interval " DURATION"
+Rate measurement window (default 1s; e.g. 500ms, 2s).
+.TP
+.BI \-\-timeout " DURATION"
+Upper bound on \-\-stats collection; unanswered sources are reported as timed out (default 5s).
+.TP
+.B \-\-strict
+With \-\-stats, exit with status 2 if any collector did not deliver.
+.TP
+.B \-\-demo
+Observe the built-in simulated machine.
+.TP
+.BI \-\-sysroot " DIR"
+Observe a captured procfs/sysfs tree; process actions are disabled.
+.TP
+.B \-\-read\-only
+Disable every process action.
+.TP
+.B \-\-no\-mouse
+Do not capture the mouse.
+.SH KEYS
+\fB0\fR\-\fB9\fR views, \fBhjkl\fR move, \fBgg\fR/\fBG\fR first/last, \fB/\fR \fB?\fR search,
+\fBF\fR filter, \fBEnter\fR inspect, \fBEsc\fR back, \fBs\fR\fIx\fR sort, \fBx\fR terminate,
+\fBX\fR force kill, \fBgs\fR signal menu, \fBgp\fR/\fBgr\fR suspend/resume, \fB!\fR emergency mode,
+\fB:\fR command line, \fBF1\fR help, \fBq\fR quit.
+.SH EXIT STATUS
+0 on success, 1 on error, 2 when \-\-strict finds incomplete collection.
+.SH SEE ALSO
+.BR ps (1),
+.BR top (1),
+.BR ss (8)
