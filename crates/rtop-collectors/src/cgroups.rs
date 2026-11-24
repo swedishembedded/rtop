@@ -200,10 +200,10 @@ impl Collector for CgroupCollector {
                     },
                 ));
             }
-            if let Some(ev) = read("memory.events") {
-                if let Some(v) = find_key(&ev, "oom_kill") {
-                    metrics.push(("oom_kills_total", Metric::u64(v)));
-                }
+            if let Some(ev) = read("memory.events")
+                && let Some(v) = find_key(&ev, "oom_kill")
+            {
+                metrics.push(("oom_kills_total", Metric::u64(v)));
             }
             if let Some(io) = read("io.stat") {
                 let (r, w) = cgroup::io_stat(&io).iter().fold((0u64, 0u64), |(r, w), s| {

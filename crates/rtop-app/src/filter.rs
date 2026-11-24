@@ -128,13 +128,14 @@ fn parse_term(tok: &str) -> Result<Term, String> {
             return Ok(Term::Num { metric, op, value });
         }
     }
-    if let Some((k, v)) = tok.split_once(':') {
-        if !k.is_empty() && !v.is_empty() {
-            return Ok(Term::Attr {
-                key: k.to_ascii_lowercase(),
-                value: v.to_ascii_lowercase(),
-            });
-        }
+    if let Some((k, v)) = tok.split_once(':')
+        && !k.is_empty()
+        && !v.is_empty()
+    {
+        return Ok(Term::Attr {
+            key: k.to_ascii_lowercase(),
+            value: v.to_ascii_lowercase(),
+        });
     }
     Ok(Term::Text(tok.to_ascii_lowercase()))
 }

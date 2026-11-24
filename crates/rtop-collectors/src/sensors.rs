@@ -129,10 +129,10 @@ impl Collector for SensorCollector {
                 if let Ok(a) = fs.read_u64(&format!("{base}/{stem}_alarm")) {
                     n = n.attr("alarm", a != 0);
                 }
-                if let (Ok(v), "temperature") = (value, kind) {
-                    if hottest.as_ref().is_none_or(|(h, _)| v > *h) {
-                        hottest = Some((v, format!("{chip_key} {label}")));
-                    }
+                if let (Ok(v), "temperature") = (value, kind)
+                    && hottest.as_ref().is_none_or(|(h, _)| v > *h)
+                {
+                    hottest = Some((v, format!("{chip_key} {label}")));
                 }
                 patch.node(n);
                 count += 1;

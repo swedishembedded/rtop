@@ -179,18 +179,17 @@ impl Collector for SecurityCollector {
             ev.wall_time = self
                 .boot_time
                 .map(|b| b as f64 + rec.timestamp_us as f64 / 1e6);
-            if let Some(p) = kmsg::subject_pid(&rec.message) {
-                if fs.read(&format!("/proc/{p}/stat"), &mut buf, SMALL).is_ok() {
-                    if let Some(st) = pid::stat(&buf) {
-                        ev.subjects.push(
-                            ProcessIdentity {
-                                pid: p,
-                                start_time_ticks: st.starttime,
-                            }
-                            .entity_id(),
-                        );
+            if let Some(p) = kmsg::subject_pid(&rec.message)
+                && fs.read(&format!("/proc/{p}/stat"), &mut buf, SMALL).is_ok()
+                && let Some(st) = pid::stat(&buf)
+            {
+                ev.subjects.push(
+                    ProcessIdentity {
+                        pid: p,
+                        start_time_ticks: st.starttime,
                     }
-                }
+                    .entity_id(),
+                );
             }
             self.totals[match category {
                 EventCategory::Security => 0,

@@ -140,12 +140,11 @@ impl Collector for StorageCollector {
                 && !d.name.starts_with("loop")
                 && !d.name.starts_with("dm-")
                 && !d.name.starts_with("md")
+                && let (Some(r), Some(w)) = (rb.as_f64(), wb.as_f64())
             {
-                if let (Some(r), Some(w)) = (rb.as_f64(), wb.as_f64()) {
-                    total_r += r;
-                    total_w += w;
-                    have_total = true;
-                }
+                total_r += r;
+                total_w += w;
+                have_total = true;
             }
             n.push_metric("read_bytes_per_second", rb);
             n.push_metric("write_bytes_per_second", wb);

@@ -96,12 +96,12 @@ impl Collector for NetworkCollector {
             };
             let r = rate("rx_bytes_per_second", d.rx_bytes);
             let t = rate("tx_bytes_per_second", d.tx_bytes);
-            if d.name != "lo" {
-                if let (Some(a), Some(b)) = (r.as_f64(), t.as_f64()) {
-                    rx += a;
-                    tx += b;
-                    have = true;
-                }
+            if d.name != "lo"
+                && let (Some(a), Some(b)) = (r.as_f64(), t.as_f64())
+            {
+                rx += a;
+                tx += b;
+                have = true;
             }
             n.push_metric("rx_bytes_per_second", r);
             n.push_metric("tx_bytes_per_second", t);

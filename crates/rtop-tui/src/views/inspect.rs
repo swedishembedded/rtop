@@ -284,20 +284,20 @@ fn detail(f: &mut Frame, area: Rect, c: &Ctx<'_>) {
                         .join("  ")
                 ))));
             }
-            if let Ok(limits) = &d.limits {
-                if section(&mut right, "limits", "Resource limits (soft / hard)".into()) {
-                    for (name, soft, hard) in limits.iter().filter(|(n, _, _)| {
-                        n.contains("open files")
-                            || n.contains("processes")
-                            || n.contains("address")
-                            || n.contains("locked")
-                            || n.contains("stack")
-                    }) {
-                        right.push(Line::from(vec![
-                            Span::styled(format!("  {name:<22}"), theme::dim()),
-                            Span::raw(format!("{soft} / {hard}")),
-                        ]));
-                    }
+            if let Ok(limits) = &d.limits
+                && section(&mut right, "limits", "Resource limits (soft / hard)".into())
+            {
+                for (name, soft, hard) in limits.iter().filter(|(n, _, _)| {
+                    n.contains("open files")
+                        || n.contains("processes")
+                        || n.contains("address")
+                        || n.contains("locked")
+                        || n.contains("stack")
+                }) {
+                    right.push(Line::from(vec![
+                        Span::styled(format!("  {name:<22}"), theme::dim()),
+                        Span::raw(format!("{soft} / {hard}")),
+                    ]));
                 }
             }
         }

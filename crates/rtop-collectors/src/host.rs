@@ -69,10 +69,10 @@ impl Collector for HostCollector {
                 n = n.text(key, v.trim());
             }
         }
-        if let Ok(os) = fs.read_string("/etc/os-release", SMALL) {
-            if let Some(pretty) = os.lines().find_map(|l| l.strip_prefix("PRETTY_NAME=")) {
-                n = n.text("os", pretty.trim_matches('"'));
-            }
+        if let Ok(os) = fs.read_string("/etc/os-release", SMALL)
+            && let Some(pretty) = os.lines().find_map(|l| l.strip_prefix("PRETTY_NAME="))
+        {
+            n = n.text("os", pretty.trim_matches('"'));
         }
         let mut patch = ctx.patch(ID);
         patch.node(n);

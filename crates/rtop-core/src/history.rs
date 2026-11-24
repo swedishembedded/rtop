@@ -100,15 +100,14 @@ impl TieredSeries {
         }
         self.live.push_back(sample);
         self.pending.push(sample);
-        if self.pending.len() >= self.factor {
-            if let Some(b) = Bucket::from_samples(self.pending.drain(..)) {
-                if self.coarse_capacity > 0 {
-                    if self.coarse.len() == self.coarse_capacity {
-                        self.coarse.pop_front();
-                    }
-                    self.coarse.push_back(b);
-                }
+        if self.pending.len() >= self.factor
+            && let Some(b) = Bucket::from_samples(self.pending.drain(..))
+            && self.coarse_capacity > 0
+        {
+            if self.coarse.len() == self.coarse_capacity {
+                self.coarse.pop_front();
             }
+            self.coarse.push_back(b);
         }
         self.last_update = at;
     }
@@ -165,15 +164,15 @@ impl<K: Hash + Eq + Clone> HistoryStore<K> {
     }
 
     pub fn push(&mut self, key: K, sample: Option<f64>, at: Timestamp) {
-        if !self.series.contains_key(&key) && self.series.len() >= self.max_series {
-            if let Some(oldest) = self
+        if !self.series.contains_key(&key)
+            && self.series.len() >= self.max_series
+            && let Some(oldest) = self
                 .series
                 .iter()
                 .min_by_key(|(_, s)| s.last_update)
                 .map(|(k, _)| k.clone())
-            {
-                self.series.remove(&oldest);
-            }
+        {
+            self.series.remove(&oldest);
         }
         self.series
             .entry(key)

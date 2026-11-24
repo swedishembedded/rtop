@@ -477,12 +477,12 @@ impl SocketCollector {
                     degraded.push("descriptor scan truncated".into());
                     return (owners, scanned);
                 }
-                if let Ok(link) = fs.read_link(&format!("/proc/{name}/fd/{fd}")) {
-                    if let pid::FdTarget::Socket(ino) = pid::fd_target(&link) {
-                        if known.contains_key(&ino) && mine.insert(ino) {
-                            owners.entry(ino).or_default().push(ident);
-                        }
-                    }
+                if let Ok(link) = fs.read_link(&format!("/proc/{name}/fd/{fd}"))
+                    && let pid::FdTarget::Socket(ino) = pid::fd_target(&link)
+                    && known.contains_key(&ino)
+                    && mine.insert(ino)
+                {
+                    owners.entry(ino).or_default().push(ident);
                 }
             }
         }

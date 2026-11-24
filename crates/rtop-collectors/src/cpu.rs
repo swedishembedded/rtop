@@ -185,14 +185,14 @@ impl Collector for CpuCollector {
         if let Some(b) = stat.procs_blocked {
             h.push_metric("procs_blocked", Metric::u64(b));
         }
-        if let Ok(model) = self.env.fs.read_string("/proc/cpuinfo", 4 << 20) {
-            if let Some(m) = model.lines().find_map(|l| {
+        if let Ok(model) = self.env.fs.read_string("/proc/cpuinfo", 4 << 20)
+            && let Some(m) = model.lines().find_map(|l| {
                 l.strip_prefix("model name")
                     .and_then(|r| r.split_once(':'))
                     .map(|(_, v)| v.trim().to_owned())
-            }) {
-                h = h.text("cpu_model", &m);
-            }
+            })
+        {
+            h = h.text("cpu_model", &m);
         }
         patch.node(h);
 

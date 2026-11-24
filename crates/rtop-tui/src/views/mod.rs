@@ -867,11 +867,11 @@ pub fn two_tables(
     cons.push(Constraint::Min(4));
     let r = rows(area, cons);
     let mut i = 0;
-    if let Some((title, lines, graphs)) = summary {
-        if area.height >= 24 {
-            summary_block(f, r[0], title, lines, graphs);
-            i = 1;
-        }
+    if let Some((title, lines, graphs)) = summary
+        && area.height >= 24
+    {
+        summary_block(f, r[0], title, lines, graphs);
+        i = 1;
     }
     panel_table(f, r[i], c, 0, hits);
     panel_table(f, r[i + 1], c, 1, hits);

@@ -32,36 +32,37 @@ pub fn insights(g: &SystemGraph) -> Vec<Insight> {
     };
     let f = |k: &str| h.f64(k);
 
-    if let (Some(used), Some(total)) = (f("swap_used_bytes"), f("swap_total_bytes")) {
-        if total > 0.0 && used / total > 0.8 {
-            let pct = 100.0 * used / total;
-            match (f("swap_in_pages_per_second"), f("psi_memory_some_avg10")) {
-                (Some(sin), Some(psi)) if sin > 50.0 || psi > 5.0 => push(
-                    &mut out,
-                    Severity::Critical,
-                    format!(
-                        "Swap {pct:.0}% occupied and actively paging: {sin:.0} pages/s in, memory PSI {psi:.1}% — active memory contention"
-                    ),
-                    None,
+    if let (Some(used), Some(total)) = (f("swap_used_bytes"), f("swap_total_bytes"))
+        && total > 0.0
+        && used / total > 0.8
+    {
+        let pct = 100.0 * used / total;
+        match (f("swap_in_pages_per_second"), f("psi_memory_some_avg10")) {
+            (Some(sin), Some(psi)) if sin > 50.0 || psi > 5.0 => push(
+                &mut out,
+                Severity::Critical,
+                format!(
+                    "Swap {pct:.0}% occupied and actively paging: {sin:.0} pages/s in, memory PSI {psi:.1}% — active memory contention"
                 ),
-                (Some(sin), psi) => push(
-                    &mut out,
-                    Severity::Info,
-                    format!(
-                        "Swap {pct:.0}% occupied but only {sin:.0} pages/s swapped in{} — inactive pages parked in swap, not current pressure",
-                        psi.map_or(String::new(), |p| format!(", memory PSI {p:.1}%"))
-                    ),
-                    None,
+                None,
+            ),
+            (Some(sin), psi) => push(
+                &mut out,
+                Severity::Info,
+                format!(
+                    "Swap {pct:.0}% occupied but only {sin:.0} pages/s swapped in{} — inactive pages parked in swap, not current pressure",
+                    psi.map_or(String::new(), |p| format!(", memory PSI {p:.1}%"))
                 ),
-                (None, _) => push(
-                    &mut out,
-                    Severity::Warning,
-                    format!(
-                        "Swap {pct:.0}% occupied; paging rate unknown, so pressure cannot be judged"
-                    ),
-                    None,
+                None,
+            ),
+            (None, _) => push(
+                &mut out,
+                Severity::Warning,
+                format!(
+                    "Swap {pct:.0}% occupied; paging rate unknown, so pressure cannot be judged"
                 ),
-            }
+                None,
+            ),
         }
     }
     if let Some(psi) = f("psi_memory_full_avg10").filter(|p| *p > 1.0) {
@@ -72,29 +73,28 @@ pub fn insights(g: &SystemGraph) -> Vec<Insight> {
             None,
         );
     }
-    if let (Some(psi), Some(cpu)) = (f("psi_cpu_some_avg10"), f("cpu_usage_percent")) {
-        if psi > 20.0 {
-            push(
-                &mut out,
-                Severity::Warning,
-                format!(
-                    "CPU contention: tasks waited for a CPU {psi:.0}% of the time (CPU busy {cpu:.0}%)"
-                ),
-                None,
-            );
-        }
+    if let (Some(psi), Some(cpu)) = (f("psi_cpu_some_avg10"), f("cpu_usage_percent"))
+        && psi > 20.0
+    {
+        push(
+            &mut out,
+            Severity::Warning,
+            format!(
+                "CPU contention: tasks waited for a CPU {psi:.0}% of the time (CPU busy {cpu:.0}%)"
+            ),
+            None,
+        );
     }
-    if let (Some(io), Some(cpu)) = (f("psi_io_some_avg10"), f("cpu_usage_percent")) {
-        if io > 10.0 && cpu < 50.0 {
-            push(
-                &mut out,
-                Severity::Warning,
-                format!(
-                    "Storage bottleneck likely: I/O PSI {io:.0}% while CPU is only {cpu:.0}% busy"
-                ),
-                None,
-            );
-        }
+    if let (Some(io), Some(cpu)) = (f("psi_io_some_avg10"), f("cpu_usage_percent"))
+        && io > 10.0
+        && cpu < 50.0
+    {
+        push(
+            &mut out,
+            Severity::Warning,
+            format!("Storage bottleneck likely: I/O PSI {io:.0}% while CPU is only {cpu:.0}% busy"),
+            None,
+        );
     }
     let blocked: Vec<_> = g
         .nodes_of(EntityKind::Process)
@@ -131,18 +131,19 @@ pub fn insights(g: &SystemGraph) -> Vec<Insight> {
     }
     for s in g.nodes_of(EntityKind::Sensor) {
         if let (Some(v), Some(crit)) = (s.f64("value"), s.f64("critical").or_else(|| s.f64("max")))
+            && s.text("unit") == Some("celsius")
+            && crit > 0.0
+            && v >= crit - 5.0
         {
-            if s.text("unit") == Some("celsius") && crit > 0.0 && v >= crit - 5.0 {
-                push(
-                    &mut out,
-                    Severity::Critical,
-                    format!(
-                        "{} at {v:.0}°C, within 5°C of its {crit:.0}°C limit",
-                        s.label()
-                    ),
-                    Some(s.id.clone()),
-                );
-            }
+            push(
+                &mut out,
+                Severity::Critical,
+                format!(
+                    "{} at {v:.0}°C, within 5°C of its {crit:.0}°C limit",
+                    s.label()
+                ),
+                Some(s.id.clone()),
+            );
         }
     }
     if let Some(r) = f("tcp_retransmits_per_second").filter(|r| *r > 50.0) {

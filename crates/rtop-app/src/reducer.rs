@@ -355,22 +355,21 @@ fn targets(s: &AppState, g: &SystemGraph) -> Vec<Target> {
             rows.extend(r.ids[a.min(c)..=a.max(c)].iter().cloned());
         }
     }
-    if rows.is_empty() {
-        if let Some(r) = s.location.table().selected.clone() {
-            if row_process(s, &r).is_some() || s.location.inspect.is_none() {
-                rows.push(r);
-            }
-        }
+    if rows.is_empty()
+        && let Some(r) = s.location.table().selected.clone()
+        && (row_process(s, &r).is_some() || s.location.inspect.is_none())
+    {
+        rows.push(r);
     }
     let mut out: Vec<Target> = rows
         .iter()
         .filter_map(|r| row_process(s, r))
         .filter_map(|id| target_of(g, &id))
         .collect();
-    if out.is_empty() {
-        if let Some(id) = s.location.inspect.clone() {
-            out.extend(target_of(g, &id));
-        }
+    if out.is_empty()
+        && let Some(id) = s.location.inspect.clone()
+    {
+        out.extend(target_of(g, &id));
     }
     out.sort_by_key(|t| t.identity);
     out.dedup();
@@ -699,10 +698,10 @@ pub fn run(s: &mut AppState, g: &SystemGraph, cmd: Cmd, fx: &mut Vec<Effect>) {
             } else {
                 let r = s.focused_rows().clone();
                 for (i, id) in r.ids.iter().enumerate() {
-                    if r.has_children[i] {
-                        if let Some(e) = id.entity() {
-                            s.collapsed.insert(e.clone());
-                        }
+                    if r.has_children[i]
+                        && let Some(e) = id.entity()
+                    {
+                        s.collapsed.insert(e.clone());
                     }
                 }
                 refresh(s, g);
@@ -1314,11 +1313,11 @@ fn mouse(s: &mut AppState, g: &SystemGraph, m: MouseAction, fx: &mut Vec<Effect>
         }
         MouseAction::RangeClick(Hit::Row { panel, row }) => {
             let from = s.cursor();
-            if select_row(s, panel, &row) {
-                if let (Some(a), Some(b)) = (from, s.cursor()) {
-                    let ids = s.focused_rows().ids[a.min(b)..=a.max(b)].to_vec();
-                    s.selection.extend(ids);
-                }
+            if select_row(s, panel, &row)
+                && let (Some(a), Some(b)) = (from, s.cursor())
+            {
+                let ids = s.focused_rows().ids[a.min(b)..=a.max(b)].to_vec();
+                s.selection.extend(ids);
             }
         }
         MouseAction::Click(Hit::Header { panel, sort: key })
@@ -1415,11 +1414,11 @@ fn record_history(s: &mut AppState, g: &SystemGraph) {
             }
         }
     }
-    if let Some(id) = s.location.inspect.clone() {
-        if let Some(n) = g.node(&id) {
-            for k in n.metrics.keys().take(64) {
-                s.history.push((id.clone(), k), n.f64(k), now);
-            }
+    if let Some(id) = s.location.inspect.clone()
+        && let Some(n) = g.node(&id)
+    {
+        for k in n.metrics.keys().take(64) {
+            s.history.push((id.clone(), k), n.f64(k), now);
         }
     }
 }
