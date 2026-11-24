@@ -16,6 +16,7 @@ use rtop_collectors::{SampleContext, Subscriptions};
 use rtop_core::{EntityId, Metric, NodeUpdate, ProcessIdentity, SystemGraph, Timestamp};
 
 struct Harness {
+    collectors: Vec<Box<dyn rtop_collectors::Collector>>,
     m: DemoMachine,
     g: SystemGraph,
     s: AppState,
@@ -26,7 +27,9 @@ struct Harness {
 impl Harness {
     fn new() -> Self {
         let m = DemoMachine::new();
+        let collectors = m.collectors(&m.env(Subscriptions::all()));
         let mut h = Harness {
+            collectors,
             m,
             g: SystemGraph::default(),
             s: AppState::new(true),
@@ -40,8 +43,7 @@ impl Harness {
 
     fn sample(&mut self) {
         self.pass += 1;
-        let env = self.m.env(Subscriptions::all());
-        for mut c in self.m.collectors(&env) {
+        for c in &mut self.collectors {
             if let Ok(s) = c.sample(&SampleContext {
                 now: Timestamp::from_millis(self.pass * 1000),
                 sequence: self.pass,

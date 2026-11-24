@@ -168,7 +168,13 @@ impl Collector for SocketCollector {
                 InetProto::Udp if s.remote.port() != 0 => "connected",
                 InetProto::Udp => "unconnected",
             };
+            let name = if s.remote.port() == 0 {
+                format!("{} {} (listening)", proto_name(s), s.local)
+            } else {
+                format!("{} {} → {}", proto_name(s), s.local, s.remote)
+            };
             let mut n = NodeUpdate::new(EntityKind::Socket, id.clone())
+                .attr("name", name)
                 .attr("protocol", proto_name(s))
                 .attr("inode", s.inode)
                 .attr("local_address", s.local.to_string())
@@ -279,8 +285,24 @@ impl Collector for SocketCollector {
         }
 
         if Subscriptions::get(&self.env.subscriptions.socket_ownership) {
-            let owners = self.scan_owners(&ids, &mut degraded);
-            let mut per_proc: HashMap<ProcessIdentity, (Traffic, u64)> = HashMap::new();
+            let (owners, scanned) = self.scan_owners(&ids, &mut degraded);
+            // Every process whose descriptors were readable gets a measured
+            // value, zero when it holds no TCP traffic.
+            let mut per_proc: HashMap<ProcessIdentity, (Traffic, u64)> = scanned
+                .into_iter()
+                .map(|p| {
+                    (
+                        p,
+                        (
+                            Traffic {
+                                rx: Some(0.0),
+                                tx: Some(0.0),
+                            },
+                            0,
+                        ),
+                    )
+                })
+                .collect();
             for (ino, procs) in &owners {
                 let t = traffic.get(ino).copied().unwrap_or_default();
                 for p in procs {
@@ -374,7 +396,13 @@ fn unix_node(id: &EntityId, u: &UnixSocket) -> NodeUpdate {
             _ => "unconnected",
         }
     };
+    let name = if u.path.is_empty() {
+        format!("unix [{}]", u.inode)
+    } else {
+        format!("unix {}", u.path)
+    };
     let mut n = NodeUpdate::new(EntityKind::Socket, id.clone())
+        .text("name", &name)
         .attr("protocol", "unix")
         .attr("inode", u.inode)
         .attr("socket_type", net::unix_type_name(u.sock_type))
@@ -399,16 +427,18 @@ fn unix_node(id: &EntityId, u: &UnixSocket) -> NodeUpdate {
 }
 
 impl SocketCollector {
-    /// Maps socket inode → processes holding a descriptor to it.
+    /// Maps socket inode → owning processes, and lists every process whose
+    /// descriptor table could be read.
     fn scan_owners(
         &mut self,
         known: &HashMap<u64, EntityId>,
         degraded: &mut Vec<String>,
-    ) -> HashMap<u64, Vec<ProcessIdentity>> {
+    ) -> (HashMap<u64, Vec<ProcessIdentity>>, Vec<ProcessIdentity>) {
         let fs = self.env.fs.clone();
         let mut owners: HashMap<u64, Vec<ProcessIdentity>> = HashMap::new();
+        let mut scanned = Vec::new();
         let Ok(entries) = fs.read_dir("/proc") else {
-            return owners;
+            return (owners, scanned);
         };
         let (mut fds, mut denied) = (0usize, 0usize);
         for name in entries
@@ -426,10 +456,9 @@ impl SocketCollector {
                 }
                 Err(_) => continue,
             };
-            if links.is_empty()
-                || fs
-                    .read(&format!("/proc/{name}/stat"), &mut self.buf, SMALL)
-                    .is_err()
+            if fs
+                .read(&format!("/proc/{name}/stat"), &mut self.buf, SMALL)
+                .is_err()
             {
                 continue;
             }
@@ -440,12 +469,13 @@ impl SocketCollector {
                 pid: pid_num,
                 start_time_ticks: st.starttime,
             };
+            scanned.push(ident);
             let mut mine = HashSet::new();
             for fd in links {
                 fds += 1;
                 if fds > MAX_FDS_PER_PASS {
                     degraded.push("descriptor scan truncated".into());
-                    return owners;
+                    return (owners, scanned);
                 }
                 if let Ok(link) = fs.read_link(&format!("/proc/{name}/fd/{fd}")) {
                     if let pid::FdTarget::Socket(ino) = pid::fd_target(&link) {
@@ -461,6 +491,6 @@ impl SocketCollector {
                 "socket owners unknown for {denied} processes of other users"
             ));
         }
-        owners
+        (owners, scanned)
     }
 }

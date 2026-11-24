@@ -1275,6 +1275,9 @@ impl DemoMachine {
             fs.file(&format!("{base}/cgroup"), format!("0::{}\n", p.cgroup));
             fs.file(&format!("{base}/io"), format!("rchar: {:.0}\nwchar: {:.0}\nsyscr: 1\nsyscw: 1\nread_bytes: {:.0}\nwrite_bytes: {:.0}\ncancelled_write_bytes: 0\n", p.read_bytes * 1.2, p.write_bytes * 1.1, p.read_bytes, p.write_bytes));
             fs.file(&format!("{base}/net/dev"), net_dev_text(&s, p.pid));
+            if s.t == 0.0 {
+                write_process_detail(fs, p, start);
+            }
         }
         for (i, d) in s.socks.iter().enumerate() {
             if s.procs.iter().any(|p| p.pid == d.owner) {
@@ -1483,6 +1486,80 @@ impl DemoMachine {
             format!("{ct}\n"),
         );
         fs.file("/proc/net/stat/nf_conntrack", format!("entries clashres found new invalid ignore delete delete_list insert insert_failed drop early_drop\n{:08x} 0 0 0 {:08x} 0 0 0 0 0 {:08x} 0\n", ct, (t * 3.0) as u64, (t * 18.0) as u64));
+    }
+}
+
+/// Static per-process files read only by deep inspection.
+fn write_process_detail(fs: &MemoryKernelFs, p: &Proc, start: u64) {
+    let base = format!("/proc/{}", p.pid);
+    let exe = p
+        .cmdline
+        .split(' ')
+        .next()
+        .filter(|e| e.starts_with('/'))
+        .map_or_else(|| format!("/usr/bin/{}", p.name), str::to_owned);
+    fs.link(&format!("{base}/exe"), &exe);
+    fs.link(
+        &format!("{base}/cwd"),
+        if p.user == 1000 {
+            "/home/demo/src/engine"
+        } else {
+            "/"
+        },
+    );
+    for (fd, target) in [
+        (0, "/dev/null"),
+        (1, "/dev/null"),
+        (2, "/dev/null"),
+        (3, "anon_inode:[eventpoll]"),
+        (4, "pipe:[7700]"),
+    ] {
+        fs.link(&format!("{base}/fd/{fd}"), target);
+    }
+    if p.threads > 1 || p.name == "postgres" {
+        fs.link(&format!("{base}/fd/5"), &format!("/var/log/{}.log", p.name));
+    }
+    let rss = p.rss_mib * 1024;
+    fs.file(&format!("{base}/smaps_rollup"), format!("Rss: {rss} kB\nPss: {} kB\nPss_Anon: {} kB\nPss_File: {} kB\nShared_Clean: {} kB\nShared_Dirty: 0 kB\nPrivate_Clean: {} kB\nPrivate_Dirty: {} kB\nSwap: 0 kB\nSwapPss: 0 kB\n", rss * 8 / 10, rss * 6 / 10, rss / 5, rss / 5, rss / 10, rss * 7 / 10));
+    fs.file(
+        &format!("{base}/oom_score"),
+        format!("{}\n", 600 + p.rss_mib / 10),
+    );
+    fs.file(
+        &format!("{base}/wchan"),
+        if p.state == 'D' {
+            "io_schedule"
+        } else {
+            "do_epoll_wait"
+        },
+    );
+    fs.file(&format!("{base}/limits"), "Limit                     Soft Limit           Hard Limit           Units     \nMax stack size            8388608              unlimited            bytes     \nMax processes             127422               127422               processes \nMax open files            1024                 524288               files     \nMax locked memory         8388608              8388608              bytes     \nMax address space         unlimited            unlimited            bytes     \n");
+    for (ns, inode) in [
+        ("cgroup", 4026531835u64),
+        ("ipc", 4026531839),
+        ("mnt", 4026531841),
+        ("net", 4026531840),
+        ("pid", 4026531836),
+        ("user", 4026531837),
+        ("uts", 4026531838),
+    ] {
+        let inode = if p.cgroup.contains("docker-") && ns != "user" {
+            inode + 1000
+        } else {
+            inode
+        };
+        fs.link(&format!("{base}/ns/{ns}"), &format!("{ns}:[{inode}]"));
+    }
+    let names = ["worker", "io", "timer", "gc", "net", "pool"];
+    for t in 0..p.threads.min(12) {
+        let tid = if t == 0 { p.pid } else { p.pid * 10 + t as u32 };
+        let tname = if t == 0 {
+            p.name.to_owned()
+        } else {
+            format!("{}-{}", names[t as usize % names.len()], t)
+        };
+        let ticks = (t + 1) * 37 + u64::from(p.pid % 97);
+        fs.file(&format!("{base}/task/{tid}/stat"), format!("{tid} ({tname}) S {} {} {} 0 -1 0 0 0 0 0 {ticks} {} 0 0 20 0 1 0 {start} 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 17 {} 0 0 0 0 0\n", p.ppid, p.pid, p.pid, ticks / 4, (tid as u64) % 16));
     }
 }
 

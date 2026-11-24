@@ -1,0 +1,24 @@
+[package]
+name = "rtop-tui"
+description = "Adaptive Ratatui interface for rtop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rtop-core.workspace = true
+rtop-app.workspace = true
+rtop-collectors.workspace = true
+rtop-actions.workspace = true
+rtop-linux.workspace = true
+ratatui.workspace = true
+unicode-width.workspace = true
+crossbeam-channel.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

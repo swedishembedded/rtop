@@ -139,7 +139,7 @@ impl TieredSeries {
 ///
 /// When the budget is exhausted, the least recently updated series is
 /// evicted, so per-process history for exited processes cannot accumulate.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HistoryStore<K> {
     series: HashMap<K, TieredSeries>,
     max_series: usize,

@@ -23,6 +23,7 @@
 
 pub mod filter;
 pub mod input;
+pub mod insight;
 pub mod keymap;
 pub mod project;
 pub mod reducer;

@@ -15,6 +15,8 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
+mod tui;
+
 use clap::Parser;
 use rtop_collectors::demo::DemoMachine;
 use rtop_collectors::{Collector, Env, Subscriptions};
@@ -44,6 +46,120 @@ struct Cli {
     /// Observe a captured procfs/sysfs tree rooted at DIR (read-only, no actions).
     #[arg(long, value_name = "DIR")]
     sysroot: Option<std::path::PathBuf>,
+    /// Do not capture the mouse (keyboard only; lets the terminal select text).
+    #[arg(long)]
+    no_mouse: bool,
+    /// Monitoring only: disable every process action.
+    #[arg(long)]
+    read_only: bool,
+}
+
+/// Process actions on the simulated machine: terminating signals remove the
+/// process, as if it exited.
+#[derive(Debug)]
+struct DemoController(DemoMachine);
+
+impl rtop_actions::ProcessController for DemoController {
+    fn signal(&self, target: rtop_core::ProcessIdentity, signal: i32) -> rtop_actions::Outcome {
+        if self.0.identity(target.pid) != Some(target) {
+            return rtop_actions::Outcome::Gone;
+        }
+        let name = rtop_linux::sys::signals()
+            .into_iter()
+            .find(|s| s.number == signal)
+            .map_or("", |s| s.name);
+        match name {
+            "SIGKILL" | "SIGTERM" | "SIGINT" | "SIGQUIT" => {
+                self.0.kill(target.pid);
+                rtop_actions::Outcome::Exited
+            }
+            _ => rtop_actions::Outcome::Delivered,
+        }
+    }
+}
+
+/// Kernel access, action controller, whether actions are enabled, and the
+/// simulated clock tick (demo only) for an interactive session.
+type Observed = (
+    Arc<dyn rtop_linux::KernelFs>,
+    Box<dyn rtop_actions::ProcessController>,
+    bool,
+    Option<Box<dyn Fn() + Send>>,
+);
+
+fn interactive(cli: &Cli) -> ExitCode {
+    use std::io::IsTerminal;
+    if !io::stdout().is_terminal() || !io::stdin().is_terminal() {
+        eprintln!(
+            "rtop: the interactive interface needs a terminal; use `rtop --stats` for YAML output"
+        );
+        return ExitCode::FAILURE;
+    }
+    let subscriptions = Arc::new(Subscriptions::default());
+    let t = target(cli, subscriptions.clone());
+    let (fs, controller, enabled, tick): Observed = match (&t.demo, &cli.sysroot) {
+        (Some(m), _) => {
+            let m2 = m.clone();
+            (
+                m.fs(),
+                Box::new(DemoController(m.clone())),
+                !cli.read_only,
+                Some(Box::new(move || m2.advance(1.0))),
+            )
+        }
+        (None, Some(root)) => (
+            Arc::new(rtop_linux::RealKernelFs::rooted(root)),
+            Box::new(rtop_actions::DisabledController(
+                "observing a captured system tree".into(),
+            )),
+            false,
+            None,
+        ),
+        (None, None) => {
+            let pidfd = rtop_actions::pidfd_supported();
+            let controller: Box<dyn rtop_actions::ProcessController> = if cli.read_only {
+                Box::new(rtop_actions::DisabledController(
+                    "rtop was started with --read-only".into(),
+                ))
+            } else if pidfd {
+                Box::new(rtop_actions::PidfdController::new(
+                    rtop_linux::RealKernelFs::live(),
+                ))
+            } else {
+                Box::new(rtop_actions::DisabledController(
+                    "this kernel lacks pidfd (Linux 5.3+), so actions could hit a recycled PID"
+                        .into(),
+                ))
+            };
+            (
+                Arc::new(rtop_linux::RealKernelFs::live()),
+                controller,
+                pidfd && !cli.read_only,
+                None,
+            )
+        }
+    };
+    let session = tui::Session {
+        collectors: t.collectors,
+        subscriptions,
+        fs,
+        clock_ticks: if t.demo.is_some() || cli.sysroot.is_some() {
+            100
+        } else {
+            rtop_linux::sys::clock_ticks()
+        },
+        controller,
+        actions_enabled: enabled,
+        mouse: !cli.no_mouse,
+        tick,
+    };
+    match tui::run(session) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("rtop: terminal error: {e}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 fn parse_duration(s: &str) -> Result<Duration, String> {
@@ -141,6 +257,5 @@ fn main() -> ExitCode {
     if cli.stats {
         return stats(&cli);
     }
-    eprintln!("rtop: the interactive interface is not built into this version yet; use --stats");
-    ExitCode::FAILURE
+    interactive(&cli)
 }
