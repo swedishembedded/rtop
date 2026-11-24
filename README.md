@@ -619,6 +619,8 @@ plus a build with the minimum supported Rust version.
 - **Docker is the only container runtime with metadata.** Podman, containerd
   and CRI-O containers are recognised from their cgroups and get resource
   accounting, but no names or images from a daemon.
+- **Static (musl) release binaries cannot load NVML**, which is a shared
+  library; use the glibc build for NVIDIA GPU telemetry.
 - **The NVML path has not been validated on physical NVIDIA hardware in the
   test suite.** The AMD and Intel paths are exercised through the demo
   machine's DRM data.
