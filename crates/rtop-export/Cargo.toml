@@ -9,11 +9,11 @@ rust-version.workspace = true
 
 [dependencies]
 rtop-core.workspace = true
-rtop-collectors.workspace = true
 
 [dev-dependencies]
+rtop-collectors.workspace = true
 serde_json.workspace = true
-yaml-rust2 = "0.10"
+yaml-rust2 = "0.13"
 rtop-runtime.workspace = true
 
 [lints]

@@ -11,7 +11,7 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 authors = ["Martin Schröder <info@swedishembedded.com>"]
-rust-version = "1.85"
+rust-version = "1.89"
 
 [workspace.dependencies]
 rtop-core = { path = "crates/rtop-core" }
@@ -27,7 +27,7 @@ rtop-app = { path = "crates/rtop-app" }
 rtop-tui = { path = "crates/rtop-tui" }
 ratatui = "0.30"
 unicode-width = "0.2"
-proptest = "1"
+proptest = "1.12"
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

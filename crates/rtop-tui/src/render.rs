@@ -69,7 +69,17 @@ fn header(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
         .to_owned();
     let mut x = area.x + 7;
     let tabs_w: usize = View::ALL.iter().map(|v| v.title().len() + 4).sum();
-    let compact = (area.width as usize) < tabs_w + 30;
+    // Host name, uptime and the LIVE/PAUSED/EMERGENCY badge must always
+    // stay visible: fall back to digit-only tabs when they would not fit.
+    let up_w = c
+        .h("uptime_seconds")
+        .map_or(0, |u| format_duration_secs(u).len() + 4);
+    let right_need = host.width() + 1 + up_w + 12;
+    let short_w: usize = View::ALL.iter().map(|v| v.short().len() + 4).sum();
+    let (full, short) = (
+        (area.width as usize) >= 7 + tabs_w + right_need,
+        (area.width as usize) >= 7 + short_w + right_need,
+    );
     if s.location.inspect.is_some() {
         let back = Span::styled(" ← back ", theme::key());
         hits.push(
@@ -99,10 +109,12 @@ fn header(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
     } else {
         for v in View::ALL {
             let active = v == s.location.view;
-            let label = if compact {
-                format!("{}", v.index())
-            } else {
+            let label = if full {
                 format!("{} {}", v.index(), v.title())
+            } else if short {
+                format!("{} {}", v.index(), v.short())
+            } else {
+                format!("{}", v.index())
             };
             let w = label.width() as u16 + 2;
             let st = if active {

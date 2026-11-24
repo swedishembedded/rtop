@@ -25,11 +25,13 @@ rtop-tui.workspace = true
 rtop-actions.workspace = true
 ratatui.workspace = true
 crossbeam-channel.workspace = true
-signal-hook = "0.3"
-clap = { version = "4.5", features = ["derive"] }
+signal-hook = "0.4"
+clap = { version = "4.6", features = ["derive"] }
 
 [dev-dependencies]
 serde_json.workspace = true
+libc.workspace = true
+vt100 = "0.18"
 
 [lints]
 workspace = true

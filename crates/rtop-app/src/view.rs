@@ -58,6 +58,22 @@ impl View {
         }
     }
 
+    /// Abbreviated title for narrower headers.
+    pub fn short(self) -> &'static str {
+        match self {
+            View::Overview => "All",
+            View::Processes => "Proc",
+            View::Cpu => "CPU",
+            View::Memory => "Mem",
+            View::Storage => "Disk",
+            View::Network => "Net",
+            View::Containers => "Cont",
+            View::Gpu => "GPU",
+            View::Security => "Sec",
+            View::Sensors => "Sens",
+        }
+    }
+
     pub fn parse(s: &str) -> Option<View> {
         let s = s.to_ascii_lowercase();
         if let Ok(d) = s.parse::<u32>() {

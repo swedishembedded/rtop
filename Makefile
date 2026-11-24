@@ -33,7 +33,7 @@ RELEASE_TESTS ?= check test
 
 .DEFAULT_GOAL := build
 .PHONY: all build build/debug build/release install uninstall run run/stats \
-	test test/unit test/e2e check check/fmt check/clippy check/doc check/deny \
+	test test/unit test/e2e check check/fmt check/clippy check/doc check/privacy check/audit check/deny \
 	fmt shots package/dist release release/patch release/minor release/major \
 	clean help _require-cargo-release
 
@@ -87,8 +87,8 @@ test/e2e:
 
 ##@ Check
 
-## check - every static gate: fmt, clippy, rustdoc
-check: check/fmt check/clippy check/doc
+## check - every static gate: fmt, clippy, rustdoc, privacy
+check: check/fmt check/clippy check/doc check/privacy
 
 ## check/fmt - verify formatting
 check/fmt:
@@ -101,6 +101,14 @@ check/clippy:
 ## check/doc - rustdoc with warnings as errors
 check/doc:
 	RUSTDOCFLAGS="-D warnings" $(CARGO) doc $(CARGO_FLAGS) --workspace --no-deps
+
+## check/privacy - fail if tracked files contain this machine's kernel release, host name, ids or login
+check/privacy:
+	scripts/check-privacy.sh
+
+## check/audit - RustSec advisory scan of Cargo.lock (needs cargo-audit)
+check/audit:
+	$(CARGO) audit
 
 ## check/deny - license and advisory audit (needs cargo-deny)
 check/deny:
