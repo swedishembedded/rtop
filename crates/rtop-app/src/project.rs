@@ -171,7 +171,20 @@ fn sorted(g: &SystemGraph, rows: Vec<RowId>, t: &TableState) -> Vec<RowId> {
         .into_iter()
         .map(|r| (row_value(g, &r, t.sort), r))
         .collect();
-    keyed.sort_by(|a, b| compare(a, b, t.descending));
+    keyed.sort_unstable_by(|a, b| compare(a, b, t.descending));
+    keyed.into_iter().map(|(_, r)| r).collect()
+}
+
+/// Filters and sorts nodes of `kind`, computing each sort key while the
+/// node is at hand (no second lookup by id). Ties break on the stable id,
+/// so the unstable sort is deterministic.
+fn sorted_nodes(g: &SystemGraph, kind: EntityKind, t: &TableState) -> Vec<RowId> {
+    let mut keyed: Vec<(SortVal, RowId)> = g
+        .nodes_of(kind)
+        .filter(|n| t.filter.matches(n))
+        .map(|n| (node_value(g, n, t.sort), RowId::Node(n.id.clone())))
+        .collect();
+    keyed.sort_unstable_by(|a, b| compare(a, b, t.descending));
     keyed.into_iter().map(|(_, r)| r).collect()
 }
 
@@ -206,7 +219,7 @@ pub fn project(g: &SystemGraph, t: &TableState, ctx: ProjectionContext<'_>) -> R
     let f = &t.filter;
     match t.panel {
         Panel::Processes if ctx.tree && f.is_empty() => process_tree(g, t, ctx.collapsed),
-        Panel::Processes => Rows::flat(sorted(g, nodes(g, EntityKind::Process, f), t)),
+        Panel::Processes => Rows::flat(sorted_nodes(g, EntityKind::Process, t)),
         Panel::Cpus => {
             let mut v: Vec<RowId> = nodes(g, EntityKind::LogicalCpu, f);
             if t.sort == SortKey::Name {
@@ -224,16 +237,16 @@ pub fn project(g: &SystemGraph, t: &TableState, ctx: ProjectionContext<'_>) -> R
                 Rows::flat(sorted(g, v, t))
             }
         }
-        Panel::BlockDevices => Rows::flat(sorted(g, nodes(g, EntityKind::BlockDevice, f), t)),
-        Panel::Mounts => Rows::flat(sorted(g, nodes(g, EntityKind::Mount, f), t)),
-        Panel::Interfaces => Rows::flat(sorted(g, nodes(g, EntityKind::Interface, f), t)),
-        Panel::Sockets => Rows::flat(sorted(g, nodes(g, EntityKind::Socket, f), t)),
+        Panel::BlockDevices => Rows::flat(sorted_nodes(g, EntityKind::BlockDevice, t)),
+        Panel::Mounts => Rows::flat(sorted_nodes(g, EntityKind::Mount, t)),
+        Panel::Interfaces => Rows::flat(sorted_nodes(g, EntityKind::Interface, t)),
+        Panel::Sockets => Rows::flat(sorted_nodes(g, EntityKind::Socket, t)),
         Panel::Communication => Rows::flat(sorted(g, edges(g, EdgeKind::CommunicatesWith, f), t)),
-        Panel::Containers => Rows::flat(sorted(g, nodes(g, EntityKind::Container, f), t)),
-        Panel::Services => Rows::flat(sorted(g, nodes(g, EntityKind::Service, f), t)),
-        Panel::Gpus => Rows::flat(sorted(g, nodes(g, EntityKind::Gpu, f), t)),
+        Panel::Containers => Rows::flat(sorted_nodes(g, EntityKind::Container, t)),
+        Panel::Services => Rows::flat(sorted_nodes(g, EntityKind::Service, t)),
+        Panel::Gpus => Rows::flat(sorted_nodes(g, EntityKind::Gpu, t)),
         Panel::GpuClients => Rows::flat(sorted(g, edges(g, EdgeKind::UsesGpu, f), t)),
-        Panel::Sensors => Rows::flat(sorted(g, nodes(g, EntityKind::Sensor, f), t)),
+        Panel::Sensors => Rows::flat(sorted_nodes(g, EntityKind::Sensor, t)),
         Panel::Batteries => {
             let mut v = nodes(g, EntityKind::Battery, f);
             v.extend(nodes(g, EntityKind::PowerSupply, f));

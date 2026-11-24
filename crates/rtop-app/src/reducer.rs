@@ -164,19 +164,22 @@ pub fn refresh(s: &mut AppState, g: &SystemGraph) {
             t.last_index = p;
         }
     }
-    let live: std::collections::BTreeSet<RowId> =
-        s.rows.iter().flat_map(|r| r.ids.iter().cloned()).collect();
-    s.selection.retain(|r| live.contains(r));
+    if !s.selection.is_empty() {
+        let rows = &s.rows;
+        s.selection
+            .retain(|r| rows.iter().any(|x| x.position(r).is_some()));
+    }
 }
 
 fn select_index(s: &mut AppState, panel_idx: usize, i: usize) {
-    let rows = s.panel_rows(panel_idx).clone();
+    let rows = s.panel_rows(panel_idx);
     if rows.is_empty() {
         return;
     }
     let i = i.min(rows.len() - 1);
+    let id = rows.ids[i].clone();
     let t = &mut s.location.tables[panel_idx];
-    t.selected = Some(rows.ids[i].clone());
+    t.selected = Some(id);
     t.last_index = i;
 }
 

@@ -327,3 +327,54 @@ fn ux_emergency_mode_and_help() {
     t.send("q");
     assert!(t.wait_exit(Duration::from_secs(5)).is_some());
 }
+
+/// Busy-looping children that saturate every CPU while alive.
+struct CpuHogs(Vec<Child>);
+
+impl CpuHogs {
+    fn start() -> CpuHogs {
+        let n = std::thread::available_parallelism().map_or(4, |n| n.get());
+        CpuHogs(
+            (0..n)
+                .map(|_| {
+                    Command::new("sh")
+                        .args(["-c", "while :; do :; done"])
+                        .spawn()
+                        .expect("spawn hog")
+                })
+                .collect(),
+        )
+    }
+}
+
+impl Drop for CpuHogs {
+    fn drop(&mut self) {
+        for c in &mut self.0 {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
+    }
+}
+
+#[test]
+fn ux_emergency_kill_latency_under_cpu_saturation() {
+    let (mut v, name) = victim("latency");
+    let mut t = Tui::launch(&[], 160, 48);
+    find_victim(&mut t, &name);
+    let _hogs = CpuHogs::start();
+    std::thread::sleep(Duration::from_millis(500));
+    // Keypress to observed exit, measured from outside rtop.
+    let start = Instant::now();
+    t.master.write_all(b"X").unwrap();
+    assert!(wait_gone(&mut v, Duration::from_secs(10)), "victim killed");
+    let latency = start.elapsed();
+    eprintln!("emergency kill latency under CPU saturation: {latency:?}");
+    // Specification target: 100 ms p99 with an optimised build. Debug
+    // builds and shared CI machines get a looser bound.
+    let budget = if cfg!(debug_assertions) {
+        Duration::from_millis(1000)
+    } else {
+        Duration::from_millis(150)
+    };
+    assert!(latency < budget, "{latency:?} exceeds {budget:?}");
+}

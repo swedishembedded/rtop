@@ -33,7 +33,7 @@ RELEASE_TESTS ?= check test
 
 .DEFAULT_GOAL := build
 .PHONY: all build build/debug build/release install uninstall run run/stats \
-	test test/unit test/e2e check check/fmt check/clippy check/doc check/privacy check/audit \
+	test test/unit test/e2e test/performance check check/fmt check/clippy check/doc check/privacy check/audit \
 	fmt shots package/dist release release/patch release/minor release/major \
 	clean help _require-cargo-release
 
@@ -84,6 +84,11 @@ test/unit:
 ## test/e2e - CLI and PTY end-to-end tests (signals only test-owned child processes)
 test/e2e:
 	$(CARGO) test $(CARGO_FLAGS) --workspace --test '*'
+
+## test/performance - performance and scale budgets (release build; see crates/rtop-tui/tests/performance.rs)
+test/performance:
+	$(CARGO) test $(CARGO_FLAGS) --release -p rtop-tui --test performance -- --nocapture --test-threads=1
+	$(CARGO) test $(CARGO_FLAGS) --release -p rtop --test pty -- --nocapture --test-threads=1 latency
 
 ##@ Check
 
