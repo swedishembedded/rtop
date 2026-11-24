@@ -30,6 +30,7 @@ use rtop_core::{
     ProcessIdentity, Scope, Unavailable,
 };
 use rtop_linux::KernelError;
+use rtop_linux::fs::KernelFsExt;
 use rtop_linux::parse::{net, pid};
 use rtop_linux::sockdiag::{InetProto, InetSocket, UnixSocket};
 
@@ -117,6 +118,18 @@ impl Collector for SocketCollector {
             .complete(Scope::Edges(EdgeKind::CommunicatesWith));
         let mut degraded = Vec::new();
 
+        // Without a view that shows individual sockets, only cheap host
+        // counts are collected: full sock_diag dumps walk socket tables that
+        // the kernel shares across network namespaces, which dominates an
+        // idle rtop's cost on a busy container host.
+        if !Subscriptions::get(&self.env.subscriptions.socket_ownership) {
+            patch.node(self.cheap_counts());
+            return Ok(Sample {
+                patch,
+                degraded: None,
+            });
+        }
+
         let mut inet = Vec::new();
         for proto in [InetProto::Tcp, InetProto::Udp] {
             match self.env.diag.inet(proto) {
@@ -141,7 +154,6 @@ impl Collector for SocketCollector {
 
         let mut traffic: HashMap<u64, Traffic> = HashMap::new();
         let mut ids: HashMap<u64, EntityId> = HashMap::new();
-        let (mut listen, mut established, mut time_wait) = (0u64, 0u64, 0u64);
         self.rates.begin();
         let local_ips: HashSet<IpAddr> = inet
             .iter()
@@ -153,12 +165,6 @@ impl Collector for SocketCollector {
         let mut remote_edges = Vec::new();
 
         for s in inet.iter().take(MAX_SOCKETS) {
-            match (s.proto, s.state) {
-                (InetProto::Tcp, 10) => listen += 1,
-                (InetProto::Tcp, 1) => established += 1,
-                (InetProto::Tcp, 6) => time_wait += 1,
-                _ => {}
-            }
             if s.inode == 0 {
                 continue; // TIME_WAIT and orphaned sockets have no owner.
             }
@@ -284,7 +290,7 @@ impl Collector for SocketCollector {
             );
         }
 
-        if Subscriptions::get(&self.env.subscriptions.socket_ownership) {
+        {
             let (owners, scanned) = self.scan_owners(&ids, &mut degraded);
             // Every process whose descriptors were readable gets a measured
             // value, zero when it holds no TCP traffic.
@@ -362,20 +368,27 @@ impl Collector for SocketCollector {
             }
         }
 
-        patch.node(
-            NodeUpdate::new(EntityKind::Host, EntityId::host())
-                .metric("sockets_tcp_listening", Metric::u64(listen))
-                .metric("sockets_tcp_established", Metric::u64(established))
-                .metric("sockets_tcp_time_wait", Metric::u64(time_wait))
-                .metric(
-                    "sockets_udp",
-                    Metric::u64(inet.iter().filter(|s| s.proto == InetProto::Udp).count() as u64),
-                )
-                .metric("sockets_unix", Metric::u64(unix.len() as u64)),
-        );
+        patch.node(host_counts(&inet, &unix));
         let degraded = (!degraded.is_empty()).then(|| degraded.join("; "));
         Ok(Sample { patch, degraded })
     }
+}
+
+fn host_counts(inet: &[InetSocket], unix: &[UnixSocket]) -> NodeUpdate {
+    let tcp = |state: u8| {
+        inet.iter()
+            .filter(|s| s.proto == InetProto::Tcp && s.state == state)
+            .count() as u64
+    };
+    NodeUpdate::new(EntityKind::Host, EntityId::host())
+        .metric("sockets_tcp_listening", Metric::u64(tcp(10)))
+        .metric("sockets_tcp_established", Metric::u64(tcp(1)))
+        .metric("sockets_tcp_time_wait", Metric::u64(tcp(6)))
+        .metric(
+            "sockets_udp",
+            Metric::u64(inet.iter().filter(|s| s.proto == InetProto::Udp).count() as u64),
+        )
+        .metric("sockets_unix", Metric::u64(unix.len() as u64))
 }
 
 fn sum(a: Option<f64>, b: Option<f64>) -> Option<f64> {
@@ -427,6 +440,49 @@ fn unix_node(id: &EntityId, u: &UnixSocket) -> NodeUpdate {
 }
 
 impl SocketCollector {
+    /// Host socket counts from O(1) sources: `/proc/net/sockstat` and a
+    /// LISTEN-only diagnostic dump. Unix sockets and established TCP are
+    /// left to the network collector's SNMP counters or detail mode.
+    fn cheap_counts(&self) -> NodeUpdate {
+        let mut n = NodeUpdate::new(EntityKind::Host, EntityId::host());
+        let sockstat = self.env.fs.read_string("/proc/net/sockstat", SMALL).ok();
+        let field = |proto: &str, key: &str| -> Option<u64> {
+            let line = sockstat
+                .as_deref()?
+                .lines()
+                .find(|l| l.starts_with(&format!("{proto}:")))?;
+            let mut it = line.split_whitespace();
+            while let Some(k) = it.next() {
+                if k == key {
+                    return it.next()?.parse().ok();
+                }
+            }
+            None
+        };
+        let opt =
+            |v: Option<u64>| v.map_or(Metric::unavailable(Unavailable::Unsupported), Metric::u64);
+        n.push_metric("sockets_tcp_time_wait", opt(field("TCP", "tw")));
+        n.push_metric("sockets_udp", opt(field("UDP", "inuse")));
+        n.push_metric(
+            "sockets_tcp_listening",
+            Metric::from_result(
+                self.env
+                    .diag
+                    .tcp_listening()
+                    .map_err(|e| crate::unavailable_from(&e)),
+            ),
+        );
+        n.push_metric(
+            "sockets_tcp_established",
+            Metric::unavailable(Unavailable::NotCollected),
+        );
+        n.push_metric(
+            "sockets_unix",
+            Metric::unavailable(Unavailable::NotCollected),
+        );
+        n
+    }
+
     /// Maps socket inode → owning processes, and lists every process whose
     /// descriptor table could be read.
     fn scan_owners(

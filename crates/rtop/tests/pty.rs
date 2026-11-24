@@ -359,7 +359,7 @@ impl Drop for CpuHogs {
 }
 
 #[test]
-fn ux_emergency_kill_latency_under_cpu_saturation() {
+fn budget_emergency_kill_latency_under_cpu_saturation() {
     let (mut v, name) = victim("latency");
     let mut t = Tui::launch(&[], 160, 48);
     find_victim(&mut t, &name);
@@ -379,4 +379,42 @@ fn ux_emergency_kill_latency_under_cpu_saturation() {
         Duration::from_millis(150)
     };
     assert!(latency < budget, "{latency:?} exceeds {budget:?}");
+}
+
+fn cpu_ticks(pid: u32) -> u64 {
+    let s = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap();
+    let f: Vec<&str> = s[s.rfind(')').unwrap() + 2..].split_whitespace().collect();
+    f[11].parse::<u64>().unwrap() + f[12].parse::<u64>().unwrap()
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore = "overhead budgets apply to release builds")]
+fn budget_idle_overhead_and_memory() {
+    let t = Tui::launch(&[], 160, 48);
+    t.expect("Memory");
+    std::thread::sleep(Duration::from_secs(3));
+    let pid = t.child.id();
+    let (a, start) = (cpu_ticks(pid), Instant::now());
+    std::thread::sleep(Duration::from_secs(10));
+    // SAFETY: sysconf has no preconditions.
+    let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as f64;
+    let cpu = 100.0 * (cpu_ticks(pid) - a) as f64 / hz / start.elapsed().as_secs_f64();
+    let rss_kb: u64 = std::fs::read_to_string(format!("/proc/{pid}/status"))
+        .unwrap()
+        .lines()
+        .find(|l| l.starts_with("VmRSS"))
+        .unwrap()
+        .split_whitespace()
+        .nth(1)
+        .unwrap()
+        .parse()
+        .unwrap();
+    eprintln!(
+        "idle overhead: {cpu:.2}% of one CPU, RSS {} MiB",
+        rss_kb / 1024
+    );
+    // Specification: <= 1% of one CPU on a quiet reference machine; shared
+    // and loaded machines get 3x headroom. RSS budget: 64 MiB.
+    assert!(cpu < 3.0, "{cpu:.2}% of one CPU");
+    assert!(rss_kb < 64 * 1024, "{rss_kb} kB");
 }

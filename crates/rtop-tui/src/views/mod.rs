@@ -329,7 +329,7 @@ fn cards(c: &Ctx<'_>) -> Vec<Card> {
             series: c.host_series("network_rx_bytes_per_second"),
             series_max: 0.0,
             lines: vec![line(vec![
-                ("tcp", c.hs("sockets_tcp_established", Fmt::Count)),
+                ("tcp", c.hs("tcp_established", Fmt::Count)),
                 ("listen", c.hs("sockets_tcp_listening", Fmt::Count)),
                 (
                     "retrans",
@@ -942,7 +942,7 @@ pub fn network(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
             ("↑", c.hs("network_tx_bytes_per_second", Fmt::Rate)),
         ]),
         kv_line(vec![
-            ("established", c.hs("sockets_tcp_established", Fmt::Count)),
+            ("established", c.hs("tcp_established", Fmt::Count)),
             ("listening", c.hs("sockets_tcp_listening", Fmt::Count)),
             ("time-wait", c.hs("sockets_tcp_time_wait", Fmt::Count)),
             ("udp", c.hs("sockets_udp", Fmt::Count)),

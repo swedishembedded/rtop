@@ -1400,6 +1400,13 @@ pub const HOST_SERIES: &[&str] = &[
 
 fn record_history(s: &mut AppState, g: &SystemGraph) {
     let now = s.now;
+    // One history sample per second, however often the graph changes.
+    if s.last_history
+        .is_some_and(|t| now.saturating_since(t) < std::time::Duration::from_millis(950))
+    {
+        return;
+    }
+    s.last_history = Some(now);
     let host = EntityId::host();
     if let Some(h) = g.node(&host) {
         for k in HOST_SERIES {

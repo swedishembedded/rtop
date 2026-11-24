@@ -229,6 +229,8 @@ pub struct AppState {
     pub subscriptions: (bool, bool, bool),
     /// Error of the expression being typed in a prompt.
     pub prompt_error: Option<String>,
+    /// When graph history was last sampled.
+    pub last_history: Option<Timestamp>,
 }
 
 impl AppState {
@@ -263,6 +265,7 @@ impl AppState {
             views: std::collections::HashMap::new(),
             subscriptions: (false, false, false),
             prompt_error: None,
+            last_history: None,
         }
     }
 

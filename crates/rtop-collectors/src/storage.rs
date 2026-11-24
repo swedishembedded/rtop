@@ -39,6 +39,7 @@ pub struct StorageCollector {
     env: Env,
     rates: RateTracker<(String, C)>,
     prev: HashMap<String, (DiskStat, Timestamp)>,
+    devices: HashMap<String, (DeviceInfo, u32)>,
 }
 
 impl StorageCollector {
@@ -47,8 +48,52 @@ impl StorageCollector {
             env,
             rates: RateTracker::new(),
             prev: HashMap::new(),
+            devices: HashMap::new(),
         }
     }
+}
+
+const DEVICE_REFRESH: u32 = 30;
+
+#[derive(Debug, Clone, Default)]
+struct DeviceInfo {
+    size_bytes: Option<u64>,
+    rotational: Option<bool>,
+    model: Option<String>,
+    partition: bool,
+    /// Parent disk of a partition, when sysfs names it.
+    parent: Option<String>,
+}
+
+fn device_info(fs: &dyn rtop_linux::KernelFs, name: &str) -> DeviceInfo {
+    let sys = format!("/sys/class/block/{name}");
+    let mut info = DeviceInfo {
+        size_bytes: fs
+            .read_u64(&format!("{sys}/size"))
+            .ok()
+            .map(|s| s.saturating_mul(512)),
+        ..Default::default()
+    };
+    if fs.read_attr(&format!("{sys}/partition")).is_ok() {
+        info.partition = true;
+        // .../block/<parent>/<partition>
+        info.parent = fs.read_link(&sys).ok().and_then(|l| {
+            let mut parts = l.rsplit('/');
+            parts.next();
+            parts.next().map(str::to_owned)
+        });
+    } else {
+        info.rotational = fs
+            .read_u64(&format!("/sys/block/{name}/queue/rotational"))
+            .ok()
+            .map(|r| r == 1);
+        info.model = ["device/model", "device/name"].iter().find_map(|f| {
+            fs.read_attr(&format!("/sys/block/{name}/{f}"))
+                .ok()
+                .map(|m| m.trim().to_owned())
+        });
+    }
+    info
 }
 
 pub fn block_device_id(name: &str) -> EntityId {
@@ -87,39 +132,41 @@ impl Collector for StorageCollector {
             {
                 continue;
             }
-            let sys = format!("/sys/class/block/{}", d.name);
-            let is_partition = fs.read_attr(&format!("{sys}/partition")).is_ok();
+            // Static device attributes are cached and re-read only for new
+            // devices and every DEVICE_REFRESH passes.
+            let info = match self.devices.get(&d.name) {
+                Some((info, age)) if *age < DEVICE_REFRESH => info.clone(),
+                _ => device_info(fs.as_ref(), &d.name),
+            };
+            let age = self
+                .devices
+                .get(&d.name)
+                .map_or(0, |(_, a)| if *a < DEVICE_REFRESH { a + 1 } else { 0 });
+            self.devices.insert(d.name.clone(), (info.clone(), age));
             let id = block_device_id(&d.name);
             let mut n = NodeUpdate::new(EntityKind::BlockDevice, id.clone())
                 .text("name", &d.name)
                 .attr("major", d.major)
                 .attr("minor", d.minor)
-                .attr("partition", is_partition);
-            if let Ok(sectors) = fs.read_u64(&format!("{sys}/size")) {
-                n.push_metric("size_bytes", Metric::u64(sectors.saturating_mul(512)));
+                .attr("partition", info.partition);
+            if let Some(b) = info.size_bytes {
+                n.push_metric("size_bytes", Metric::u64(b));
             }
-            if !is_partition {
-                if let Ok(rot) = fs.read_u64(&format!("/sys/block/{}/queue/rotational", d.name)) {
-                    n = n.attr("rotational", rot == 1);
-                }
-                for f in ["device/model", "device/name"] {
-                    if let Ok(m) = fs.read_attr(&format!("/sys/block/{}/{f}", d.name)) {
-                        n = n.text("model", m.trim());
-                        break;
-                    }
-                }
-            } else if let Ok(link) = fs.read_link(&sys) {
-                // .../block/<parent>/<partition>
-                let mut parts = link.rsplit('/');
-                if let (Some(_), Some(parent)) = (parts.next(), parts.next()) {
-                    patch.edge(EdgeUpdate::new(
-                        EdgeKind::Contains,
-                        block_device_id(parent),
-                        id.clone(),
-                        Evidence::KernelConfirmed,
-                    ));
-                }
+            if let Some(r) = info.rotational {
+                n = n.attr("rotational", r);
             }
+            if let Some(m) = &info.model {
+                n = n.text("model", m);
+            }
+            if let Some(parent) = &info.parent {
+                patch.edge(EdgeUpdate::new(
+                    EdgeKind::Contains,
+                    block_device_id(parent),
+                    id.clone(),
+                    Evidence::KernelConfirmed,
+                ));
+            }
+            let is_partition = info.partition;
             let key = d.name.clone();
             let mut rate = |c: C, v: u64, scale: f64| {
                 self.rates
@@ -190,6 +237,7 @@ impl Collector for StorageCollector {
         }
         self.rates.sweep();
         self.prev.retain(|k, _| seen.contains(k));
+        self.devices.retain(|k, _| seen.contains(k));
         let host_metric = |v: f64| {
             if have_total {
                 Metric::f64(v)

@@ -34,6 +34,7 @@ pub const ID: CollectorId = CollectorId("processes");
 /// Upper bound on processes tracked in one pass.
 pub const MAX_PROCESSES: usize = 200_000;
 const METADATA_REFRESH_PASSES: u32 = 10;
+const STATUS_EVERY: u64 = 5;
 
 #[derive(Debug, Clone)]
 struct Cached {
@@ -60,6 +61,8 @@ pub struct ProcessCollector {
     users: HashMap<u32, String>,
     users_loaded: bool,
     buf: Vec<u8>,
+    status: HashMap<ProcessIdentity, pid::PidStatus>,
+    pass: u64,
 }
 
 impl ProcessCollector {
@@ -71,6 +74,8 @@ impl ProcessCollector {
             users: HashMap::new(),
             users_loaded: false,
             buf: Vec::with_capacity(1024),
+            status: HashMap::new(),
+            pass: 0,
         }
     }
 
@@ -160,10 +165,21 @@ impl Collector for ProcessCollector {
                 pid: pid_num,
                 start_time_ticks: st.starttime,
             };
-            let status = fs
-                .read_string(&format!("/proc/{name}/status"), SMALL)
-                .map(|s| pid::status(&s))
-                .unwrap_or_default();
+            // /proc/PID/status (credentials, swap, context switches) is
+            // costly to format and changes slowly: read it for new
+            // processes and then every STATUS_EVERY passes, staggered by PID.
+            let fresh_status = !self.cache.contains_key(&ident)
+                || (self.pass + u64::from(pid_num)).is_multiple_of(STATUS_EVERY);
+            let status = if fresh_status {
+                let st = fs
+                    .read_string(&format!("/proc/{name}/status"), SMALL)
+                    .map(|s| pid::status(&s))
+                    .unwrap_or_default();
+                self.status.insert(ident, st.clone());
+                st
+            } else {
+                self.status.get(&ident).cloned().unwrap_or_default()
+            };
             by_pid.insert(pid_num, ident);
             parents.push((ident, st.ppid));
 
@@ -249,10 +265,7 @@ impl Collector for ProcessCollector {
                 "cpu_time_seconds",
                 Metric::f64((st.utime + st.stime) as f64 / ticks),
             );
-            n.push_metric(
-                "rss_bytes",
-                Metric::u64(status.vm_rss.unwrap_or(st.rss_pages.saturating_mul(page))),
-            );
+            n.push_metric("rss_bytes", Metric::u64(st.rss_pages.saturating_mul(page)));
             n.push_metric("virtual_bytes", Metric::u64(st.vsize));
             n.push_metric(
                 "swap_bytes",
@@ -347,6 +360,9 @@ impl Collector for ProcessCollector {
         self.rates.sweep();
         self.cache
             .retain(|ident, _| by_pid.get(&ident.pid) == Some(ident));
+        self.status
+            .retain(|ident, _| by_pid.get(&ident.pid) == Some(ident));
+        self.pass += 1;
 
         for (child, ppid) in parents {
             if let Some(parent) = by_pid.get(&ppid) {

@@ -145,6 +145,13 @@ pub fn run(mut session: Session) -> std::io::Result<()> {
         &mut effects,
     );
 
+    // Telemetry changes are coalesced into at most one table refresh and
+    // frame per FRAME; input renders immediately.
+    const FRAME: Duration = Duration::from_millis(250);
+    let mut last_frame = Instant::now() - FRAME;
+    let mut graph_dirty = false;
+    let mut urgent = true;
+
     let result = loop {
         for (id, st) in rt.dispatch() {
             graph.set_collector_status(id, st);
@@ -153,23 +160,46 @@ pub fn run(mut session: Session) -> std::io::Result<()> {
         let mut events: Vec<Event> = Vec::new();
         for _ in 0..64 {
             match input_rx.try_recv() {
-                Ok(i) => events.extend(input_event(i, &mut term, &hits, &mut mouse)),
+                Ok(i) => {
+                    urgent = true;
+                    events.extend(input_event(i, &mut term, &hits, &mut mouse));
+                }
                 Err(_) => break,
             }
         }
         if events.is_empty() {
-            if state.dirty && term.ready() {
+            let frame_due = last_frame.elapsed() >= FRAME;
+            if graph_dirty && frame_due {
+                graph_dirty = false;
+                reduce(
+                    &mut state,
+                    &graph,
+                    Event::GraphChanged,
+                    clock.now(),
+                    &mut effects,
+                );
+            }
+            if state.dirty && (urgent || frame_due) && term.ready() {
                 if let Err(e) = term.draw(|f| rtop_tui::render(f, &state, &graph, &mut hits)) {
                     break Err(e);
                 }
                 state.dirty = false;
+                urgent = false;
+                last_frame = Instant::now();
             }
-            let timeout = rt
+            let mut timeout = rt
                 .next_deadline()
                 .clamp(Duration::from_millis(5), Duration::from_secs(1));
+            if graph_dirty || state.dirty {
+                let until_frame = FRAME.saturating_sub(last_frame.elapsed());
+                timeout = timeout.min(until_frame.max(Duration::from_millis(5)));
+            }
             select! {
                 recv(input_rx) -> i => match i {
-                    Ok(i) => events.extend(input_event(i, &mut term, &hits, &mut mouse)),
+                    Ok(i) => {
+                        urgent = true;
+                        events.extend(input_event(i, &mut term, &hits, &mut mouse));
+                    }
                     Err(_) => break Ok(()),
                 },
                 recv(rt.completions()) -> c => {
@@ -181,10 +211,11 @@ pub fn run(mut session: Session) -> std::io::Result<()> {
                             let a = rt.complete(c);
                             Runtime::apply(&mut graph, a);
                         }
-                        events.push(Event::GraphChanged);
+                        graph_dirty = true;
                     }
                 },
                 recv(action_rx) -> r => if let Ok((target, signal_name, outcome)) = r {
+                    urgent = true;
                     events.push(Event::ActionDone { target, signal_name, outcome });
                 },
                 recv(inspect_rx) -> d => if let Ok(d) = d {

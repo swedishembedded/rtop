@@ -88,7 +88,7 @@ test/e2e:
 ## test/performance - performance and scale budgets (release build; see crates/rtop-tui/tests/performance.rs)
 test/performance:
 	$(CARGO) test $(CARGO_FLAGS) --release -p rtop-tui --test performance -- --nocapture --test-threads=1
-	$(CARGO) test $(CARGO_FLAGS) --release -p rtop --test pty -- --nocapture --test-threads=1 latency
+	$(CARGO) test $(CARGO_FLAGS) --release -p rtop --test pty -- --nocapture --test-threads=1 budget
 
 FUZZ_SECONDS ?= 60
 ## test/fuzz - run every fuzz target for FUZZ_SECONDS each (needs nightly and cargo-fuzz)

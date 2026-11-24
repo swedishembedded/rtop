@@ -75,6 +75,16 @@ pub trait SockDiag: Send + Sync + std::fmt::Debug {
     fn unix(&self) -> Result<Vec<UnixSocket>, KernelError>;
     /// Human-readable backend name (for collector diagnostics).
     fn backend(&self) -> &'static str;
+
+    /// Number of listening TCP sockets. Backends override this with a
+    /// cheaper query than a full table dump.
+    fn tcp_listening(&self) -> Result<u64, KernelError> {
+        Ok(self
+            .inet(InetProto::Tcp)?
+            .iter()
+            .filter(|s| s.state == 10)
+            .count() as u64)
+    }
 }
 
 /// Reads `/proc/net/*` through a [`KernelFs`]: works on fixtures and
@@ -173,6 +183,17 @@ impl SockDiag for NetlinkDiag {
             }
         }
         Ok(out)
+    }
+
+    fn tcp_listening(&self) -> Result<u64, KernelError> {
+        let mut n = 0;
+        for family in [libc::AF_INET, libc::AF_INET6] {
+            match nl::dump_inet_states(family as u8, InetProto::Tcp, 1 << 10, self.timeout) {
+                Ok(v) => n += v.iter().filter(|s| s.state == 10).count() as u64,
+                Err(_) => return self.fallback.tcp_listening(),
+            }
+        }
+        Ok(n)
     }
 
     fn unix(&self) -> Result<Vec<UnixSocket>, KernelError> {
@@ -285,6 +306,17 @@ mod nl {
         proto: InetProto,
         timeout: Duration,
     ) -> Result<Vec<InetSocket>, KernelError> {
+        dump_inet_states(family, proto, u32::MAX, timeout)
+    }
+
+    /// Dump restricted to a TCP state bitmask; LISTEN alone (1 << 10) makes
+    /// the kernel walk only the listening hash.
+    pub fn dump_inet_states(
+        family: u8,
+        proto: InetProto,
+        states: u32,
+        timeout: Duration,
+    ) -> Result<Vec<InetSocket>, KernelError> {
         let sock = netlink::Socket::open(libc::NETLINK_SOCK_DIAG, timeout)?;
         let mut req = vec![0u8; 56];
         req[0] = family;
@@ -293,7 +325,7 @@ mod nl {
             InetProto::Udp => libc::IPPROTO_UDP as u8,
         };
         req[2] = 1 << (INET_DIAG_INFO - 1); // idiag_ext
-        req[4..8].copy_from_slice(&u32::MAX.to_ne_bytes()); // all states
+        req[4..8].copy_from_slice(&states.to_ne_bytes());
         req[48..56].copy_from_slice(&[0xff; 8]); // INET_DIAG_NOCOOKIE
         let mut out = Vec::new();
         sock.dump(SOCK_DIAG_BY_FAMILY, &req, |m| {

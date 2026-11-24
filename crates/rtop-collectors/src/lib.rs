@@ -138,8 +138,9 @@ pub trait Collector: Send {
 pub struct Subscriptions {
     /// Per-process `/proc/PID/io` (sorting by I/O, process view visible).
     pub process_io: AtomicBool,
-    /// Scan every process's descriptors to attribute sockets (network view,
-    /// process inspector, `--stats`).
+    /// Publish individual sockets and attribute them to processes by
+    /// scanning descriptors (network view, process inspector, `--stats`).
+    /// Off, only host socket counts are collected.
     pub socket_ownership: AtomicBool,
     /// Per-process DRM client accounting (GPU view).
     pub gpu_clients: AtomicBool,
