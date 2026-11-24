@@ -208,3 +208,57 @@ proptest! {
         let _ = w.draw(cols, rows);
     }
 }
+
+#[test]
+fn every_cpu_is_visible_without_scrolling_at_common_sizes() {
+    for (cpus, sizes) in [
+        (16u32, &[(50u16, 16u16), (80, 24), (120, 36)][..]),
+        (22, &[(80, 24), (160, 48)]),
+        (64, &[(50, 16), (80, 24), (120, 36), (160, 48)]),
+        (256, &[(80, 24), (120, 36), (160, 48), (300, 100)]),
+    ] {
+        let m = DemoMachine::with_cpus(cpus);
+        let mut cs: Vec<Box<dyn Collector>> = m.collectors(&m.env(Subscriptions::all()));
+        let mut w = World {
+            g: SystemGraph::default(),
+            s: AppState::new(true),
+            t: 0,
+        };
+        for i in 1..=2 {
+            for c in &mut cs {
+                if let Ok(x) = c.sample(&SampleContext {
+                    now: Timestamp::from_millis(i * 1000),
+                    sequence: i,
+                }) {
+                    w.g.apply(x.patch);
+                }
+            }
+            m.advance(1.0);
+            w.ev(Event::GraphChanged);
+        }
+        w.keys("2");
+        for &(cols, rows) in sizes {
+            w.ev(Event::Resize {
+                width: cols,
+                height: rows,
+            });
+            let (_, hits) = w.draw(cols, rows);
+            let shown = hits
+                .iter()
+                .filter(|(_, h)| {
+                    matches!(
+                        h,
+                        Hit::Row {
+                            panel: rtop_app::Panel::Cpus,
+                            ..
+                        }
+                    )
+                })
+                .count();
+            assert_eq!(
+                shown, cpus as usize,
+                "{cpus} CPUs at {cols}x{rows}: {shown} visible"
+            );
+        }
+    }
+}

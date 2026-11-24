@@ -27,7 +27,6 @@ use serde_json::{Value, json};
 use crate::docker::{DockerApi, DockerCollector};
 use crate::{Collector, CollectorError, Env, Subscriptions};
 
-const CPUS: u32 = 16;
 const TICKS: f64 = 100.0;
 const GIB: u64 = 1 << 30;
 const MIB: u64 = 1 << 20;
@@ -661,6 +660,8 @@ fn sockets() -> Vec<DemoSock> {
 #[derive(Debug)]
 struct State {
     t: f64,
+    /// Logical CPUs; the first half are performance cores.
+    cpus: u32,
     procs: Vec<Proc>,
     socks: Vec<DemoSock>,
     tcp_bytes: Vec<(f64, f64)>,
@@ -866,14 +867,22 @@ impl Default for DemoMachine {
 
 impl DemoMachine {
     pub fn new() -> Self {
+        Self::with_cpus(16)
+    }
+
+    /// A demo machine with `cpus` logical CPUs (at least 2). The last CPU
+    /// runs a pinned busy loop, so a saturated core is always present.
+    pub fn with_cpus(cpus: u32) -> Self {
+        let cpus = cpus.max(2);
         let procs = procs();
         let socks = sockets();
         let state = State {
             t: 0.0,
+            cpus,
             tcp_bytes: vec![(1e6, 1e6); socks.len()],
             procs,
             socks,
-            cpu_ticks: vec![[0.0; 4]; CPUS as usize],
+            cpu_ticks: vec![[0.0; 4]; cpus as usize],
             disk: [0.0; 6],
             net: [[0.0; 4]; 4],
             psi_total: [0.0; 3],
@@ -964,13 +973,22 @@ impl DemoMachine {
                 p.faults += (cpu * 3.0 + 1.0) * dt;
             }
             let total_cpu: f64 = s.procs.iter().map(|p| cpu_at(p, t)).sum();
+            let n = s.cpus as usize;
             #[allow(clippy::needless_range_loop)]
-            for c in 0..CPUS as usize {
-                // Spread process load over CPUs; P-cores (0-7) take more.
-                let share = if c < 8 { 0.085 } else { 0.04 };
-                let busy = ((total_cpu * share * (1.0 + 0.25 * (t * 0.9 + c as f64).sin()))
-                    / 100.0)
-                    .clamp(0.01, 0.98);
+            for c in 0..n {
+                // Spread process load over CPUs; P-cores (first half) take
+                // more; the last CPU is pinned at saturation.
+                let share = if c < n / 2 {
+                    1.36 / n as f64
+                } else {
+                    0.64 / n as f64
+                };
+                let busy = if c == n - 1 {
+                    0.995
+                } else {
+                    ((total_cpu * share * (1.0 + 0.25 * (t * 0.9 + c as f64).sin())) / 100.0)
+                        .clamp(0.01, 0.98)
+                };
                 let ticks = TICKS * dt;
                 let tk = &mut s.cpu_ticks[c];
                 tk[0] += ticks * busy * 0.75;
@@ -1029,15 +1047,23 @@ impl DemoMachine {
             "NAME=\"Demo Linux\"\nPRETTY_NAME=\"Demo Linux 26.04\"\n",
         );
         fs.file("/etc/passwd", "root:x:0:0:root:/root:/bin/bash\nwww-data:x:33:33:www-data:/var/www:/usr/sbin/nologin\ndbuser:x:999:999::/home/dbuser:/bin/sh\ndemo:x:1000:1000:Demo User:/home/demo:/bin/zsh\n");
+        let ncpu = self.state.lock().unwrap_or_else(|p| p.into_inner()).cpus;
         fs.file(
             "/proc/cpuinfo",
-            "processor\t: 0\nmodel name\t: Demo Hybrid CPU 16-Core @ 4.8GHz\n",
+            format!("processor\t: 0\nmodel name\t: Demo Hybrid CPU {ncpu}-Core @ 4.8GHz\n"),
         );
         fs.link("/proc/self/ns/net", "net:[4026531840]");
         // CPU topology: 8 P-cores (no SMT here) + 8 E-cores in two clusters.
-        fs.file("/sys/devices/cpu_core/cpus", "0-7\n");
-        fs.file("/sys/devices/cpu_atom/cpus", "8-15\n");
-        for c in 0..CPUS {
+        let cpus = self.state.lock().unwrap_or_else(|p| p.into_inner()).cpus;
+        fs.file(
+            "/sys/devices/cpu_core/cpus",
+            format!("0-{}\n", cpus / 2 - 1),
+        );
+        fs.file(
+            "/sys/devices/cpu_atom/cpus",
+            format!("{}-{}\n", cpus / 2, cpus - 1),
+        );
+        for c in 0..cpus {
             let base = format!("/sys/devices/system/cpu/cpu{c}");
             fs.file(&format!("{base}/topology/physical_package_id"), "0\n");
             fs.file(&format!("{base}/topology/core_id"), format!("{c}\n"));
@@ -1295,8 +1321,8 @@ impl DemoMachine {
             400_000.0 + t * 35.0
         );
         fs.file("/proc/stat", stat);
-        for c in 0..CPUS {
-            let khz = if c < 8 {
+        for c in 0..s.cpus {
+            let khz = if c < s.cpus / 2 {
                 3_900_000.0 + 800_000.0 * wave(0.3, c as f64)
             } else {
                 2_600_000.0 + 400_000.0 * wave(0.3, c as f64)
@@ -1351,7 +1377,7 @@ impl DemoMachine {
             let start = start_ticks(p.pid);
             fs.file(
                 &format!("{base}/stat"),
-                format!("{} ({}) {} {} {} {} 0 -1 4194560 {:.0} 0 {:.0} 0 {:.0} {:.0} 0 0 20 0 {} 0 {start} {} {rss_pages} 18446744073709551615 1 1 0 0 0 0 0 0 0 0 0 0 17 {} 0 0 0 0 0\n", p.pid, p.name, p.state, p.ppid, p.pid, p.pid, p.faults, p.faults / 500.0, ut, st, p.threads, p.rss_mib * MIB * 3 + 120 * MIB, p.pid % CPUS),
+                format!("{} ({}) {} {} {} {} 0 -1 4194560 {:.0} 0 {:.0} 0 {:.0} {:.0} 0 0 20 0 {} 0 {start} {} {rss_pages} 18446744073709551615 1 1 0 0 0 0 0 0 0 0 0 0 17 {} 0 0 0 0 0\n", p.pid, p.name, p.state, p.ppid, p.pid, p.pid, p.faults, p.faults / 500.0, ut, st, p.threads, p.rss_mib * MIB * 3 + 120 * MIB, p.pid % s.cpus),
             );
             fs.file(&format!("{base}/status"), format!("Name:\t{}\nUid:\t{u}\t{u}\t{u}\t{u}\nThreads:\t{}\nVmRSS:\t{} kB\nVmSwap:\t{} kB\nvoluntary_ctxt_switches:\t{:.0}\nnonvoluntary_ctxt_switches:\t{:.0}\n", p.name, p.threads, p.rss_mib * 1024, if p.pid == 3000 { 412 * 1024 } else { 0 }, p.ticks * 9.0 + 100.0, p.ticks + 10.0, u = p.user));
             fs.file(&format!("{base}/cmdline"), p.cmdline.replace(' ', "\0"));

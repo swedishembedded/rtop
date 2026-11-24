@@ -5,6 +5,7 @@
 //! Layouts of the ten views and the inspection page.
 
 pub mod columns;
+pub mod cpugrid;
 pub mod inspect;
 pub mod modals;
 
@@ -670,17 +671,31 @@ fn summary_block(
 }
 
 pub fn cpu(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
-    let top_h = (area.height / 2).clamp(6, 22);
+    // The grid gets as many rows as it needs to show every CPU, up to 60%
+    // of the view; the scheduler summary sits beside it when wide enough.
+    const SIDE_W: u16 = 46;
+    let ncpu = c.s.panel_rows(0).len();
+    let max_rows = (area.height * 3 / 5).saturating_sub(2).max(1);
+    // The scheduler summary yields its space whenever the grid would
+    // otherwise have to fall back to smaller cells.
+    let wide = area.width >= 110 && cpugrid::full_cells(ncpu, area.width - SIDE_W - 2, max_rows);
+    let grid_w = if wide {
+        area.width - SIDE_W
+    } else {
+        area.width
+    }
+    .saturating_sub(2);
+    let grid_rows = cpugrid::wanted_rows(ncpu, grid_w, max_rows);
+    let top_h = (grid_rows + 2)
+        .max(if wide { 10 } else { 3 })
+        .min(area.height.saturating_sub(4).max(3));
     let r = rows(area, [Constraint::Length(top_h), Constraint::Min(4)]);
-    let top = if area.width >= 100 {
-        cols(
-            r[0],
-            [Constraint::Percentage(45), Constraint::Percentage(55)],
-        )
+    let top = if wide {
+        cols(r[0], [Constraint::Min(20), Constraint::Length(SIDE_W)])
     } else {
         vec![r[0]]
     };
-    panel_table(f, top[0], c, 0, hits);
+    cpugrid::render(f, top[0], c, 0, hits);
     if top.len() > 1 {
         let model = c
             .host

@@ -28,7 +28,10 @@ struct Session {
 
 impl Session {
     fn new(w: u16, h: u16) -> Self {
-        let m = DemoMachine::new();
+        Self::with_machine(DemoMachine::new(), w, h)
+    }
+
+    fn with_machine(m: DemoMachine, w: u16, h: u16) -> Self {
         let collectors = m.collectors(&m.env(Subscriptions::all()));
         let mut s = Session {
             collectors,
@@ -162,6 +165,8 @@ fn scripts() -> Vec<(&'static str, Script)> {
             s.key(KeyCode::Enter);
         }),
         ("cpu", |s| s.keys("2")),
+        ("cpu-64", |s| s.keys("2")),
+        ("cpu-256", |s| s.keys("2")),
         ("memory", |s| s.keys("3")),
         ("storage", |s| s.keys("4")),
         ("network", |s| s.keys("5")),
@@ -215,12 +220,21 @@ fn main() {
     // One simulated history shared by all screens; each script runs on a
     // fresh copy of the application state.
     let base = Session::new(sizes[0].0, sizes[0].1);
+    // Larger machines for the CPU grid; built only when requested.
+    let mut big: std::collections::HashMap<u32, Session> = std::collections::HashMap::new();
     for (name, script) in scripts() {
         if only.as_deref().is_some_and(|o| !name.contains(o)) {
             continue;
         }
         for (w, h) in sizes {
-            let mut s = base.fork();
+            let cpus: Option<u32> = name.strip_prefix("cpu-").and_then(|n| n.parse().ok());
+            let mut s = match cpus {
+                Some(n) => big
+                    .entry(n)
+                    .or_insert_with(|| Session::with_machine(DemoMachine::with_cpus(n), w, h))
+                    .fork(),
+                None => base.fork(),
+            };
             s.ev(Event::Resize {
                 width: w,
                 height: h,
