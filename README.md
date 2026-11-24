@@ -8,15 +8,14 @@ prints the same graph as YAML or JSON with `rtop --stats`.
 
 ![rtop overview: resource tiles, process table and insights](docs/screenshots/overview.webp)
 
-*All screenshots in this README show `rtop --demo`: a built-in, fully invented
-machine. No real system appears in them.*
+*All screenshots show `rtop --demo`, a built-in simulated machine. No real
+system appears in them.*
 
 ## One tool for live diagnosis
 
-A typical investigation switches between half a dozen tools. rtop covers the
-same ground in ten views that share one data model:
+Ten views share one data model:
 
-| Question | What you would otherwise reach for | rtop view |
+| Question | Usual tools | rtop view |
 | --- | --- | --- |
 | What is using CPU and memory? | `top`, `htop`, `btop` | `0` Overview, `1` Processes |
 | Which cores are busy, and are tasks waiting? | `mpstat`, `/proc/pressure` | `2` CPU |
@@ -29,21 +28,21 @@ same ground in ten views that share one data model:
 | Temperatures, fans, power, battery? | `sensors`, `upower` | `9` Sensors |
 | What exactly is this process holding open? | `lsof`, `pmap`, `/proc/PID/*` | `Enter` on a process |
 
-rtop is a tool for diagnosing a machine *now*. It does not replace those tools
-for everything they do (see [limitations](#limitations)).
+rtop diagnoses a machine *now*. It does not replace everything those tools do;
+see [limitations](#limitations).
 
 ## Everything is connected
 
-Collectors do not fill separate tables. They publish nodes and edges into one
-graph: processes are `member_of` cgroups, containers are `accounted_to` them,
-processes `owns_socket` sockets, sockets are `connected_to` their peers,
-volumes are `backed_by` filesystems, processes `uses_gpu` a GPU. `Enter`
-follows a relationship; `Ctrl+o` goes back.
+Collectors publish nodes and edges into one graph: processes are `member_of`
+cgroups, containers are `accounted_to` them, processes `owns_socket` sockets,
+sockets are `connected_to` their peers, volumes are `backed_by` filesystems,
+processes `uses_gpu` a GPU. `Enter` follows a relationship; `Ctrl+o` goes
+back.
 
-That makes a path such as *busy container → its processes → their sockets →
-the process on the other end* a matter of a few key presses.
+The path *busy container → its processes → their sockets → the process on the
+other end* takes a few key presses.
 
-Relationships are only asserted with evidence, and the evidence is shown:
+Relationships are asserted only with evidence, and the evidence is shown:
 
 - **kernel confirmed** — for example `/proc/PID/fd/N` links to the socket inode.
 - **socket peer confirmed** — the kernel's `UNIX_DIAG_PEER` names the other
@@ -51,13 +50,13 @@ Relationships are only asserted with evidence, and the evidence is shown:
 - **endpoint matched** — both ends of a TCP connection were observed in this
   namespace with mirrored addresses.
 
-Process-to-process communication is derived from these and is never inferred
-from addresses that merely look compatible.
+Process-to-process communication is derived from these, never inferred from
+addresses that merely look compatible.
 
 ## Missing data is never shown as zero
 
-A measured zero and "could not measure" are different types in rtop. Anything
-without a value carries a reason, in the UI and in the export:
+A measured zero and "could not measure" are different types. Anything without
+a value carries a reason, in the UI and in the export:
 
 | Shown as | Reason in `--stats` | Meaning |
 | --- | --- | --- |
@@ -71,15 +70,17 @@ without a value carries a reason, in the UI and in the export:
 | `N/A (gone)` | `removed` | The entity disappeared during sampling |
 | `N/A (timeout)` | `timed_out` | The provider missed its deadline |
 
-Two more markers apply to values that do exist: **stale** (the collector that
-produced the value is overdue or blocked, so the last reading is kept and
-marked) and **estimated** (derived by a heuristic, such as a container's
-working set, shown with a leading `~`).
+Two more markers apply to values that do exist:
 
-Interpretation works the same way. The *Insights* panel states
-hypotheses with their evidence, for example "Swap 99% occupied but only 0
-pages/s swapped in — inactive pages parked in swap, not current pressure".
-When the data needed for a judgement is missing, rtop says so or says nothing.
+- **stale** — the collector that produced the value is overdue or blocked; the
+  last reading is kept and marked.
+- **estimated** — derived by a heuristic, such as a container's working set;
+  shown with a leading `~`.
+
+The *Insights* panel states hypotheses with their evidence, for example "Swap
+99% occupied but only 0 pages/s swapped in — inactive pages parked in swap,
+not current pressure". When the data needed for a judgement is missing, rtop
+says so or says nothing.
 
 ## Actions cannot hit the wrong process
 
@@ -89,15 +90,11 @@ verifies that the pidfd still refers to that exact process, and only then
 sends the signal through the pidfd. A mismatch aborts with "not sent".
 
 Delivery is not reported as success. After a terminating signal rtop observes
-whether the process actually exited, and reports a process stuck in
-uninterruptible sleep (state `D`) as still present instead of reporting it as
-killed. On kernels without pidfd, actions are disabled rather than done with a
-racy fallback.
+whether the process exited, and reports a process stuck in uninterruptible
+sleep (state `D`) as still present, not as killed. On kernels without pidfd,
+actions are disabled; there is no racy fallback.
 
 ## It stays usable when the system is not
-
-A monitor is needed most when the machine is overloaded. The runtime is built
-around that case:
 
 - Every collector runs on its own worker thread with its own deadline. A slow
   collector misses deadlines (which are counted) and has its interval
@@ -118,8 +115,7 @@ around that case:
 
 ## Everything on screen is scriptable
 
-`rtop --stats` prints the complete graph with a versioned schema, so the data
-behind the UI is available to scripts without screen scraping:
+`rtop --stats` prints the complete graph with a versioned schema:
 
 ```sh
 rtop --stats --json | jq '.nodes[] | select(.kind == "host") | .metrics.cpu_usage_percent'
@@ -213,8 +209,7 @@ process removes it from the simulation and sends no real signal.
 
 ### Keys
 
-`F1` shows this reference inside rtop. Both are generated from, or written
-against, the same bindings table, which is also what the key resolver uses.
+`F1` shows this reference inside rtop.
 
 **Views**
 
@@ -305,7 +300,7 @@ Command mode accepts `:help`, `:q`, `:view <name>`, `:sort <key> [asc|desc]`,
 
 ### Filter expressions
 
-`F` (or `:filter`) takes an expression that is evaluated per row:
+`F` (or `:filter`) takes an expression evaluated per row:
 
 ```text
 chrome                      name or command line contains "chrome"
@@ -338,7 +333,7 @@ Mouse input produces the same commands as the keyboard. Start with
 ## `rtop --stats`
 
 `--stats` takes two samples of every collector, separated by `--interval`, so
-that rates are real measurements, then prints the graph and exits.
+rates are measured, then prints the graph and exits.
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
@@ -424,9 +419,8 @@ collectors:
     detail: "not observing the live system"
 ```
 
-`complete` is `false` here because the demo machine has no rtop
-process to measure, so the self-monitoring collector reports itself
-unavailable.
+`complete` is `false` here because the demo machine has no rtop process to
+measure, so the self-monitoring collector reports itself unavailable.
 
 ### Examples
 
@@ -487,7 +481,7 @@ are never read, because they routinely hold credentials.
 
 ## Permissions and privileges
 
-rtop is designed to run as an ordinary user and never asks for more.
+rtop runs as an ordinary user and never asks for more.
 
 | Data | Needs | Without it |
 | --- | --- | --- |
@@ -523,7 +517,7 @@ collectors ──patches──▶ runtime ──▶ SystemGraph ──▶ app st
 | `rtop-export` | The YAML/JSON document |
 | `rtop` | The binary: CLI and the interactive event loop |
 
-Design rules worth knowing:
+Design rules:
 
 - Only the graph owner applies patches. A collector can retract only what it
   asserted itself, and an older patch can never overwrite a newer one.
@@ -561,8 +555,7 @@ make shots       # render every view from the demo machine into target/shots/
 - **Fault-injection tests** run collectors against hung remote filesystems,
   permission errors, processes vanishing mid-scan, PID reuse and counter
   resets.
-- `make check/audit` runs the RustSec advisory scan (needs `cargo-audit`); CI
-  runs it on every push.
+- **`make check/audit`** needs `cargo-audit`; CI runs it on every push.
 
 ## Releases
 
