@@ -14,6 +14,9 @@ authors = ["Martin Schröder <info@swedishembedded.com>"]
 rust-version = "1.85"
 
 [workspace.dependencies]
+rtop-core = { path = "crates/rtop-core" }
+rtop-linux = { path = "crates/rtop-linux" }
+libc = "0.2"
 proptest = "1"
 
 [workspace.lints.rust]
