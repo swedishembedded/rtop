@@ -176,7 +176,7 @@ bindings! {
     ['+'] => Cmd::Faster, "Act", "Refresh faster";
     ['-'] => Cmd::Slower, "Act", "Refresh slower";
     [':'] => Cmd::CommandLine, "General", "Command mode (:help, :sort, :filter, :signal, :q)";
-    [Esc] => Cmd::Cancel, "General", "Cancel / close / back";
+    [Esc] => Cmd::Cancel, "General", "Cancel, deselect (view stays put), close, back";
     ['q'] => Cmd::Quit, "General", "Close view, quit from root";
     [(^'c')] => Cmd::ForceQuit, "General", "Quit";
     [(F 10)] => Cmd::ForceQuit, "General", "Quit";

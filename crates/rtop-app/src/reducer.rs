@@ -149,19 +149,21 @@ pub fn refresh(s: &mut AppState, g: &SystemGraph) {
     s.rows_generation = g.generation();
     for (i, t) in s.location.tables.iter_mut().enumerate() {
         let rows = &s.rows[i];
-        let valid = t
-            .selected
-            .as_ref()
-            .is_some_and(|r| rows.position(r).is_some());
-        if !valid {
-            // Keep the cursor where it was when its row disappears.
-            t.selected = if rows.is_empty() {
-                None
-            } else {
-                Some(rows.ids[t.last_index.min(rows.len() - 1)].clone())
-            };
-        } else if let Some(p) = t.selected.as_ref().and_then(|r| rows.position(r)) {
-            t.last_index = p;
+        // No selection is a valid state: the view then stays where it is
+        // while rows re-sort. A selected row that disappears (its process
+        // exited) hands the cursor to the row now at its position.
+        match t.selected.as_ref().map(|r| rows.position(r)) {
+            Some(Some(p)) => t.last_index = p,
+            Some(None) => {
+                t.selected =
+                    (!rows.is_empty()).then(|| rows.ids[t.last_index.min(rows.len() - 1)].clone());
+            }
+            // Relationship lists do not re-sort under the user, so the
+            // inspection page starts with its first relation selected.
+            None if t.panel == Panel::Relations && !rows.is_empty() => {
+                t.selected = Some(rows.ids[0].clone());
+            }
+            None => {}
         }
     }
     if !s.selection.is_empty() {
@@ -188,12 +190,12 @@ fn move_cursor(s: &mut AppState, panel_idx: usize, delta: i64) {
     if rows.is_empty() {
         return;
     }
-    let cur = s.location.tables[panel_idx]
-        .selected
-        .as_ref()
-        .and_then(|r| rows.position(r))
-        .unwrap_or(0) as i64;
-    let next = (cur + delta).clamp(0, rows.len() as i64 - 1) as usize;
+    let t = &s.location.tables[panel_idx];
+    let next = match t.selected.as_ref().and_then(|r| rows.position(r)) {
+        Some(cur) => (cur as i64 + delta).clamp(0, rows.len() as i64 - 1) as usize,
+        // Nothing selected: the first motion selects the top visible row.
+        None => t.offset.get().min(rows.len() - 1),
+    };
     select_index(s, panel_idx, next);
 }
 
@@ -791,6 +793,10 @@ pub fn run(s: &mut AppState, g: &SystemGraph, cmd: Cmd, fx: &mut Vec<Effect>) {
                 s.selection.clear();
             } else if s.location.inspect.is_some() {
                 back(s, g, fx);
+            } else {
+                // Deselect: the view stays exactly where it is and stops
+                // following a row as the table re-sorts.
+                s.location.table_mut().selected = None;
             }
         }
         Cmd::Quit => {
@@ -1336,7 +1342,16 @@ fn mouse(s: &mut AppState, g: &SystemGraph, m: MouseAction, fx: &mut Vec<Effect>
             let idx = panel
                 .and_then(|p| s.location.tables.iter().position(|t| t.panel == p))
                 .unwrap_or(s.location.focus);
-            move_cursor(s, idx, i64::from(lines));
+            if s.location.tables[idx].selected.is_some() {
+                move_cursor(s, idx, i64::from(lines));
+            } else {
+                // Without a selection the wheel scrolls the view itself.
+                let len = s.panel_rows(idx).len();
+                let t = &s.location.tables[idx];
+                let max = len.saturating_sub(t.viewport.get().max(1));
+                t.offset
+                    .set((t.offset.get() as i64 + i64::from(lines)).clamp(0, max as i64) as usize);
+            }
         }
         _ => {}
     }

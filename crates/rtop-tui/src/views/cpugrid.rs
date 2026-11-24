@@ -125,11 +125,12 @@ pub fn render(f: &mut Frame, area: Rect, c: &Ctx<'_>, idx: usize, hits: &mut Hit
         return;
     }
     let g = layout(rows.len(), inner.width, inner.height);
+    // usize::MAX: nothing selected; nothing highlighted, view not moved.
     let cursor = t
         .selected
         .as_ref()
         .and_then(|r| rows.position(r))
-        .unwrap_or(0);
+        .unwrap_or(usize::MAX);
     if g.mode == Mode::Micro {
         return micro(f, area, inner, c, idx, g, cursor, focused, hits);
     }
@@ -137,7 +138,11 @@ pub fn render(f: &mut Frame, area: Rect, c: &Ctx<'_>, idx: usize, hits: &mut Hit
     let per_col = g.rows as usize;
     let visible_rows = inner.height as usize;
     let mut offset = t.offset.get();
-    let cursor_row = cursor % per_col;
+    let cursor_row = if cursor == usize::MAX {
+        offset
+    } else {
+        cursor % per_col
+    };
     if cursor_row < offset {
         offset = cursor_row;
     } else if cursor_row >= offset + visible_rows {
@@ -285,8 +290,12 @@ fn micro(
     let rows = c.s.panel_rows(idx);
     let per_row = g.columns as usize;
     let visible = inner.height as usize;
-    let cursor_row = cursor / per_row;
     let mut offset = t.offset.get();
+    let cursor_row = if cursor == usize::MAX {
+        offset
+    } else {
+        cursor / per_row
+    };
     if cursor_row < offset {
         offset = cursor_row;
     } else if cursor_row >= offset + visible {

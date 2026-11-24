@@ -185,6 +185,8 @@ fn find_victim(t: &mut Tui, name: &str) {
     // Back in normal mode with the victim selected before acting.
     t.expect("NORMAL");
     t.expect("Processes 1 ");
+    // Tables start unselected; select the only row.
+    t.send("j");
 }
 
 #[test]
@@ -225,7 +227,7 @@ fn ux_search_filter_inspect_and_back() {
     t.send("1Fuser:dbuser\r");
     t.expect("filter: user:dbuser");
     assert!(!t.text().contains("rustc"), "filtered out");
-    t.send("\r");
+    t.send("j\r");
     t.expect("Relationships");
     t.expect("Deep inspection");
     t.send("\x1b");

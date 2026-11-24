@@ -207,9 +207,37 @@ fn cancelled_termination_sends_nothing_and_confirmed_sends_captured_identity() {
 }
 
 #[test]
+fn escape_deselects_and_the_view_stays_put_while_rows_resort() {
+    let mut h = Harness::new();
+    h.keys("1");
+    // Tables start without a selection.
+    assert_eq!(h.selected(), None);
+    let row = h.pid_row(3300);
+    h.ev(Event::Mouse(MouseAction::Click(Hit::Row {
+        panel: Panel::Processes,
+        row,
+    })));
+    assert!(h.selected().is_some());
+    h.key(KeyCode::Esc);
+    assert_eq!(h.selected(), None);
+    // New samples re-sort the table; nothing is re-selected.
+    h.sample();
+    h.sample();
+    assert_eq!(h.selected(), None);
+    // The first motion selects the top visible row.
+    h.s.location.table().offset.set(0);
+    h.keys("j");
+    assert_eq!(h.s.cursor(), Some(0));
+}
+
+#[test]
 fn emergency_force_kill_is_immediate_for_one_process_confirmed_for_many() {
     let mut h = Harness::new();
     h.keys("1");
+    // Nothing is selected yet: nothing to kill.
+    h.keys("X");
+    assert!(h.signals().is_empty());
+    h.keys("j");
     h.keys("X");
     let s = h.signals();
     assert_eq!(s.len(), 1);

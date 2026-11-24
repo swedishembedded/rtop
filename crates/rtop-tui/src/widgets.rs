@@ -277,16 +277,16 @@ pub fn table(
         );
         return;
     }
-    let cursor = t
-        .selected
-        .as_ref()
-        .and_then(|r| rows.position(r))
-        .unwrap_or(0);
+    // Without a selection the view stays where the user left it.
+    let selected_pos = t.selected.as_ref().and_then(|r| rows.position(r));
+    let cursor = selected_pos.unwrap_or(usize::MAX);
     let mut offset = t.offset.get().min(rows.len().saturating_sub(1));
-    if cursor < offset {
-        offset = cursor;
-    } else if cursor >= offset + visible {
-        offset = cursor + 1 - visible;
+    if let Some(cursor) = selected_pos {
+        if cursor < offset {
+            offset = cursor;
+        } else if cursor >= offset + visible {
+            offset = cursor + 1 - visible;
+        }
     }
     offset = offset.min(rows.len().saturating_sub(visible));
     t.offset.set(offset);
@@ -341,7 +341,15 @@ pub fn table(
     }
     // Scroll position.
     if rows.len() > visible && inner.width > 10 {
-        let txt = format!(" {}/{} ", cursor + 1, rows.len());
+        let txt = match selected_pos {
+            Some(c) => format!(" {}/{} ", c + 1, rows.len()),
+            None => format!(
+                " {}-{}/{} ",
+                offset + 1,
+                (offset + visible).min(rows.len()),
+                rows.len()
+            ),
+        };
         let w = txt.len() as u16;
         let r = Rect {
             x: area.x + area.width.saturating_sub(w + 2),

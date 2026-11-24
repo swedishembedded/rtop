@@ -288,7 +288,7 @@ process removes it from the simulation and sends no real signal.
 | Key | Action |
 | --- | --- |
 | `:` | Command mode |
-| `Esc` | Cancel / close / back |
+| `Esc` | Cancel; clear the selection so the view stays put; close; back |
 | `q` | Close view; quit from the root |
 | `Ctrl+c`, `F10` | Quit |
 | `F1` | Help |
@@ -297,6 +297,10 @@ process removes it from the simulation and sends no real signal.
 Command mode accepts `:help`, `:q`, `:view <name>`, `:sort <key> [asc|desc]`,
 `:filter <expr>`, `:nofilter`, `:signal <name|number>`, `:tree`, `:pause`,
 `:emergency`, `:interval <factor>`, `:back` and `:forward`.
+
+Tables start with nothing selected, so the view stays where it is while rows
+re-sort. The first motion key selects the top visible row; `Esc` clears the
+selection again.
 
 ### Filter expressions
 

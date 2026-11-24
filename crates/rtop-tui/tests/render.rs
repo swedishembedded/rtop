@@ -107,8 +107,8 @@ fn every_view_renders_at_every_size_with_consistent_hits() {
         ("7", "Demo Radeon"),
         ("8", "Telemetry sources"),
         ("9", "Package id 0"),
-        ("1\r", "Relationships"),
-        ("\x1b1x", "Terminate"),
+        ("1j\r", "Relationships"),
+        ("\x1b1jx", "Terminate"),
     ];
     for (keys, expect) in screens {
         for c in keys.chars() {
@@ -202,6 +202,7 @@ proptest! {
         let mut w = world();
         w.keys(&view.to_string());
         if inspect {
+            w.keys("j");
             w.ev(Event::Key(Key::plain(KeyCode::Enter)));
         }
         w.ev(Event::Resize { width: cols, height: rows });

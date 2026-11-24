@@ -188,7 +188,7 @@ fn scripts() -> Vec<(&'static str, Script)> {
             ));
         }),
         ("inspect-container", |s| {
-            s.keys("6");
+            s.keys("6j");
             s.key(KeyCode::Enter);
         }),
         ("context-menu", |s| {
