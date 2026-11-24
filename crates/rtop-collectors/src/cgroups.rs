@@ -245,7 +245,6 @@ impl Collector for CgroupCollector {
                         .attr("runtime", runtime)
                         .attr("container_id", cid.clone())
                         .attr("cgroup", path.clone());
-                    cn = cn.attr("name", cid[..cid.len().min(12)].to_owned());
                     for (k, m) in &metrics {
                         cn.push_metric(k, *m);
                     }

@@ -83,23 +83,19 @@ fn target(cli: &Cli, subscriptions: Arc<Subscriptions>) -> Target {
 
 fn stats(cli: &Cli) -> ExitCode {
     let t = target(cli, Subscriptions::all());
-    // The demo machine has no clock of its own: advance it across the window.
-    let ticker = t.demo.clone().map(|m| {
-        let half = cli.interval / 2;
-        std::thread::spawn(move || {
-            std::thread::sleep(half);
-            m.advance(1.0);
-        })
-    });
-    let graph = rtop_runtime::snapshot(
+    // The demo machine has no clock of its own: advance it between rounds.
+    let demo = t.demo.clone();
+    let graph = rtop_runtime::snapshot_with(
         t.collectors,
         Arc::new(MonotonicClock::new()),
         cli.interval,
         cli.timeout,
+        move || {
+            if let Some(m) = demo {
+                m.advance(1.0);
+            }
+        },
     );
-    if let Some(h) = ticker {
-        let _ = h.join();
-    }
     let doc = rtop_export::document(
         &graph,
         rtop_export::ExportOptions {

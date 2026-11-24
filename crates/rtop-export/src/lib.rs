@@ -413,19 +413,13 @@ mod tests {
     fn demo_graph() -> SystemGraph {
         let m = DemoMachine::new();
         let env = m.env(Subscriptions::all());
-        let m2 = m.clone();
-        let t = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(40));
-            m2.advance(1.0);
-        });
-        let g = rtop_runtime::snapshot(
+        rtop_runtime::snapshot_with(
             m.collectors(&env),
             Arc::new(MonotonicClock::new()),
-            Duration::from_millis(100),
+            Duration::from_millis(50),
             Duration::from_secs(5),
-        );
-        t.join().unwrap();
-        g
+            || m.advance(1.0),
+        )
     }
 
     fn render(g: &SystemGraph) -> (String, String) {

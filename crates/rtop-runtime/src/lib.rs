@@ -375,6 +375,19 @@ pub fn snapshot(
     window: Duration,
     timeout: Duration,
 ) -> SystemGraph {
+    snapshot_with(collectors, clock, window, timeout, || {})
+}
+
+/// [`snapshot`] with a hook run between the baseline and the second round
+/// (simulated machines advance their counters there).
+pub fn snapshot_with(
+    collectors: Vec<Box<dyn Collector>>,
+    clock: std::sync::Arc<dyn Clock>,
+    window: Duration,
+    timeout: Duration,
+    between_rounds: impl FnOnce(),
+) -> SystemGraph {
+    let mut between_rounds = Some(between_rounds);
     let mut rt = Runtime::start(collectors, clock.clone());
     let mut graph = SystemGraph::default();
     for (id, s) in rt.statuses() {
@@ -387,6 +400,9 @@ pub fn snapshot(
     let first_deadline = start + window.max(timeout / 2);
     for round in 0..2 {
         if round == 1 {
+            if let Some(hook) = between_rounds.take() {
+                hook();
+            }
             let wake = start + window;
             if let Some(d) = wake.checked_duration_since(std::time::Instant::now()) {
                 std::thread::sleep(d);
@@ -599,19 +615,13 @@ mod tests {
     fn snapshot_of_demo_machine_has_rates() {
         let m = rtop_collectors::demo::DemoMachine::new();
         let env = m.env(Subscriptions::all());
-        // Advance the simulated machine while the window elapses.
-        let m2 = m.clone();
-        let ticker = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(60));
-            m2.advance(1.0);
-        });
-        let g = snapshot(
+        let g = snapshot_with(
             m.collectors(&env),
             Arc::new(MonotonicClock::new()),
-            Duration::from_millis(150),
+            Duration::from_millis(50),
             Duration::from_secs(5),
+            || m.advance(1.0),
         );
-        ticker.join().unwrap();
         assert!(
             g.node(&EntityId::host())
                 .unwrap()
