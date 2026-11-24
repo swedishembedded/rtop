@@ -11,7 +11,7 @@
 //! The rtop application state machine.
 //!
 //! [`reduce`] is a deterministic function of the current [`AppState`], the
-//! read-only [`SystemGraph`], one [`Event`] and the time it happened. It
+//! read-only [`SystemGraph`](rtop_core::SystemGraph), one [`Event`] and the time it happened. It
 //! never performs I/O, never reads a clock and never touches global state:
 //! everything with side effects is returned as an [`Effect`] for the caller
 //! to execute. A whole interactive session can therefore be replayed in a

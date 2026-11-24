@@ -9,7 +9,7 @@
 
 //! rtop's terminal interface.
 //!
-//! [`render`] draws one frame from the application state and the graph. It
+//! [`render()`] draws one frame from the application state and the graph. It
 //! never reads the kernel, never mutates application state (apart from the
 //! per-table scroll hints kept in `Cell`s) and records every clickable
 //! region with the stable identity it displayed in a [`HitMap`], so mouse
