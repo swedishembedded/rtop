@@ -17,6 +17,8 @@ rust-version = "1.85"
 rtop-core = { path = "crates/rtop-core" }
 rtop-linux = { path = "crates/rtop-linux" }
 libc = "0.2"
+rtop-collectors = { path = "crates/rtop-collectors" }
+serde_json = "1"
 proptest = "1"
 
 [workspace.lints.rust]
