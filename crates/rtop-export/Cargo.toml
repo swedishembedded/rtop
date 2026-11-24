@@ -1,0 +1,20 @@
+[package]
+name = "rtop-export"
+description = "Deterministic YAML and JSON serialisation of the rtop telemetry graph"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rtop-core.workspace = true
+rtop-collectors.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+yaml-rust2 = "0.10"
+rtop-runtime.workspace = true
+
+[lints]
+workspace = true
