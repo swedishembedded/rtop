@@ -11,12 +11,7 @@ prints the same graph as YAML or JSON with `rtop --stats`.
 *All screenshots in this README show `rtop --demo`: a built-in, fully invented
 machine. No real system appears in them.*
 
-## Why the claim holds
-
-The title is a strong claim. This is the argument for it, and the
-[limitations](#limitations) section says where it stops.
-
-### 1. One tool for live diagnosis
+## One tool for live diagnosis
 
 A typical investigation switches between half a dozen tools. rtop covers the
 same ground in ten views that share one data model:
@@ -37,7 +32,7 @@ same ground in ten views that share one data model:
 rtop is a tool for diagnosing a machine *now*. It does not replace those tools
 for everything they do (see [limitations](#limitations)).
 
-### 2. Everything is connected
+## Everything is connected
 
 Collectors do not fill separate tables. They publish nodes and edges into one
 graph: processes are `member_of` cgroups, containers are `accounted_to` them,
@@ -59,7 +54,7 @@ Relationships are only asserted with evidence, and the evidence is shown:
 Process-to-process communication is derived from these and is never inferred
 from addresses that merely look compatible.
 
-### 3. Missing data is never shown as zero
+## Missing data is never shown as zero
 
 A measured zero and "could not measure" are different types in rtop. Anything
 without a value carries a reason, in the UI and in the export:
@@ -81,12 +76,12 @@ produced the value is overdue or blocked, so the last reading is kept and
 marked) and **estimated** (derived by a heuristic, such as a container's
 working set, shown with a leading `~`).
 
-The same honesty applies to interpretation. The *Insights* panel states
+Interpretation works the same way. The *Insights* panel states
 hypotheses with their evidence, for example "Swap 99% occupied but only 0
 pages/s swapped in — inactive pages parked in swap, not current pressure".
 When the data needed for a judgement is missing, rtop says so or says nothing.
 
-### 4. Actions cannot hit the wrong process
+## Actions cannot hit the wrong process
 
 A PID can be reused between the moment you look at a row and the moment you
 press a key. rtop identifies a process by PID *and* start time, opens a pidfd,
@@ -95,11 +90,11 @@ sends the signal through the pidfd. A mismatch aborts with "not sent".
 
 Delivery is not reported as success. After a terminating signal rtop observes
 whether the process actually exited, and reports a process stuck in
-uninterruptible sleep (state `D`) as still present instead of claiming it was
+uninterruptible sleep (state `D`) as still present instead of reporting it as
 killed. On kernels without pidfd, actions are disabled rather than done with a
 racy fallback.
 
-### 5. It stays usable when the system is not
+## It stays usable when the system is not
 
 A monitor is needed most when the machine is overloaded. The runtime is built
 around that case:
@@ -121,7 +116,7 @@ around that case:
 - rtop reports its own CPU, memory and thread count, and the cost and missed
   deadlines of every telemetry source, in view `8`.
 
-### 6. Everything on screen is scriptable
+## Everything on screen is scriptable
 
 `rtop --stats` prints the complete graph with a versioned schema, so the data
 behind the UI is available to scripts without screen scraping:
@@ -429,7 +424,7 @@ collectors:
     detail: "not observing the live system"
 ```
 
-`complete` is `false` here for an honest reason: the demo machine has no rtop
+`complete` is `false` here because the demo machine has no rtop
 process to measure, so the self-monitoring collector reports itself
 unavailable.
 
