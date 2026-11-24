@@ -34,7 +34,8 @@ impl Gate {
         self.cv.notify_all();
     }
 
-    fn wait(&self) {
+    /// Blocks until [`Gate::open`] is called.
+    pub fn wait(&self) {
         let mut g = self.open.lock().unwrap_or_else(|p| p.into_inner());
         while !*g {
             g = self.cv.wait(g).unwrap_or_else(|p| p.into_inner());

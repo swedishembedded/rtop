@@ -1,0 +1,17 @@
+[package]
+name = "rtop-runtime"
+description = "Supervised, deadline-scheduled collector runtime for rtop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rtop-core.workspace = true
+rtop-linux.workspace = true
+rtop-collectors.workspace = true
+crossbeam-channel.workspace = true
+
+[lints]
+workspace = true

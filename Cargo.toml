@@ -19,6 +19,9 @@ rtop-linux = { path = "crates/rtop-linux" }
 libc = "0.2"
 rtop-collectors = { path = "crates/rtop-collectors" }
 serde_json = "1"
+rtop-runtime = { path = "crates/rtop-runtime" }
+rtop-export = { path = "crates/rtop-export" }
+crossbeam-channel = "0.5"
 proptest = "1"
 
 [workspace.lints.rust]
