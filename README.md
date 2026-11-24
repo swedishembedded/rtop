@@ -534,6 +534,8 @@ make test        # test/unit and test/e2e
 make test/unit   # unit, property and UI snapshot tests
 make test/e2e    # CLI and PTY end-to-end tests
 make check/audit # RustSec advisory scan of Cargo.lock
+make test/performance  # release-build performance, scale and kill-latency budgets
+make test/fuzz   # libFuzzer campaign over parsers and decoders (nightly + cargo-fuzz)
 make shots       # render every view from the demo machine into target/shots/
 ```
 
@@ -552,6 +554,14 @@ make shots       # render every view from the demo machine into target/shots/
 - **Render tests** draw every view, dialog and the inspector at sizes from
   1×1 to 300×100 (and arbitrary sizes), check that every clickable region is
   a real row, and that hostile process names cannot inject escape sequences.
+- **Differential tests** compare `rtop --stats` on the live machine with
+  `free`, `nproc`, `df`, `ss` and `ps`.
+- **Performance tests** hold the budgets: re-sorting 10,000 processes under
+  20 ms, key handling under 5 ms, rendering under 30 ms, a 1,000-process scan
+  under 50 ms, a graph of 100,000 processes and 200,000 sockets, and SIGKILL
+  from keypress to observed exit under 150 ms while every CPU is saturated.
+- **Fuzz targets** (`fuzz/`) cover the procfs and process parsers, the
+  netlink decoders, filter expressions and the export emitters.
 - **Fault-injection tests** run collectors against hung remote filesystems,
   permission errors, processes vanishing mid-scan, PID reuse and counter
   resets.

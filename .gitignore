@@ -2,3 +2,7 @@
 **/*.rs.bk
 *.pending-snap
 /shots
+fuzz/target
+fuzz/corpus
+fuzz/artifacts
+fuzz/coverage

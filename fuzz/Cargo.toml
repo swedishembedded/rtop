@@ -1,0 +1,58 @@
+# Copyright (c) 2026 Martin Schröder <info@swedishembedded.com>
+#
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "rtop-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+rtop-core = { path = "../crates/rtop-core" }
+rtop-linux = { path = "../crates/rtop-linux" }
+rtop-app = { path = "../crates/rtop-app" }
+rtop-export = { path = "../crates/rtop-export" }
+
+# Not part of the main workspace: needs a nightly toolchain and cargo-fuzz.
+[workspace]
+
+[[bin]]
+name = "procfs"
+path = "fuzz_targets/procfs.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "process"
+path = "fuzz_targets/process.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "netlink"
+path = "fuzz_targets/netlink.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "filter"
+path = "fuzz_targets/filter.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "export"
+path = "fuzz_targets/export.rs"
+test = false
+doc = false
+bench = false

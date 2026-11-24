@@ -33,7 +33,7 @@ RELEASE_TESTS ?= check test
 
 .DEFAULT_GOAL := build
 .PHONY: all build build/debug build/release install uninstall run run/stats \
-	test test/unit test/e2e test/performance check check/fmt check/clippy check/doc check/privacy check/audit \
+	test test/unit test/e2e test/performance test/fuzz check check/fmt check/clippy check/doc check/privacy check/audit \
 	fmt shots package/dist release release/patch release/minor release/major \
 	clean help _require-cargo-release
 
@@ -89,6 +89,13 @@ test/e2e:
 test/performance:
 	$(CARGO) test $(CARGO_FLAGS) --release -p rtop-tui --test performance -- --nocapture --test-threads=1
 	$(CARGO) test $(CARGO_FLAGS) --release -p rtop --test pty -- --nocapture --test-threads=1 latency
+
+FUZZ_SECONDS ?= 60
+## test/fuzz - run every fuzz target for FUZZ_SECONDS each (needs nightly and cargo-fuzz)
+test/fuzz:
+	cd fuzz && for t in procfs process netlink filter export; do \
+		cargo +nightly fuzz run $$t -- -max_total_time=$(FUZZ_SECONDS) -max_len=4096 || exit 1; \
+	done
 
 ##@ Check
 
