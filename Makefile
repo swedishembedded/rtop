@@ -116,7 +116,7 @@ fmt:
 
 ##@ Screenshots
 
-## shots - render every screen at several sizes from a redacted demo system into target/shots/*.png
+## shots - render every screen at several sizes from a redacted demo system into target/shots/*.webp
 shots:
 	$(CARGO) run $(CARGO_FLAGS) -p rtop-tui --example screenshots -- target/shots
 	scripts/shots.sh target/shots

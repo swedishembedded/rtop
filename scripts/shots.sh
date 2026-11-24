@@ -3,10 +3,11 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 #
-# Converts the HTML screens rendered by the `screenshots` example into PNG
-# images with headless Chromium. Needs a Chromium/Chrome binary (CHROME=...,
-# or found on PATH or in the Playwright browser cache) and the DejaVu Sans
-# Mono font for exact glyph widths.
+# Converts the HTML screens rendered by the `screenshots` example into
+# lossless WebP images: headless Chromium takes the screenshot, ImageMagick
+# (`magick`) or `cwebp` encodes it. Needs a Chromium/Chrome binary
+# (CHROME=..., or found on PATH or in the Playwright browser cache) and the
+# DejaVu Sans Mono font for exact glyph widths.
 #
 #   scripts/shots.sh target/shots [name-filter]
 set -euo pipefail
@@ -29,6 +30,17 @@ find_chrome() {
     exit 1
 }
 
+encode_webp() {
+    if command -v magick >/dev/null 2>&1; then
+        magick "$1" -define webp:lossless=true -define webp:method=6 "$2"
+    elif command -v cwebp >/dev/null 2>&1; then
+        cwebp -quiet -lossless -z 9 "$1" -o "$2"
+    else
+        echo "shots.sh: need ImageMagick (magick) or cwebp to write WebP" >&2
+        exit 1
+    fi
+}
+
 chrome=$(find_chrome)
 count=0
 for html in "$dir"/*.html; do
@@ -43,6 +55,8 @@ for html in "$dir"/*.html; do
     "$chrome" --headless --no-sandbox --disable-gpu --hide-scrollbars \
         --force-device-scale-factor="$scale" --window-size="$w,$h" \
         --screenshot="$dir/$name.png" "file://$(realpath "$html")" >/dev/null 2>&1
+    encode_webp "$dir/$name.png" "$dir/$name.webp"
+    rm -f "$dir/$name.png"
     count=$((count + 1))
 done
-echo "$count PNG screenshots in $dir"
+echo "$count WebP screenshots in $dir"

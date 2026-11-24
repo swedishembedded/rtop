@@ -42,7 +42,7 @@ for v in "${values[@]}"; do
             echo "check-privacy: binary file $f contains a property of this machine" >&2
             status=1
         fi
-    done < <(git ls-files | grep -E '\.(png|jpg|gif|svg)$' || true)
+    done < <(git ls-files | grep -E '\.(png|jpg|jpeg|gif|svg|webp)$' || true)
 done
 [[ $status -eq 0 ]] && echo "check-privacy: no machine-identifying data in tracked files (${#values[@]} properties checked)"
 exit $status

@@ -33,7 +33,7 @@ locations, not status.
 | `crates/rtop-export` | YAML/JSON document contract |
 | `crates/rtop` | Binary: CLI, interactive event loop, PTY end-to-end tests |
 | `docs/architecture.md` | Design decisions and invariants |
-| `scripts/` | `shots.sh` (PNG screenshots), `check-privacy.sh` |
+| `scripts/` | `shots.sh` (WebP screenshots), `check-privacy.sh` |
 
 ## Rules
 
@@ -42,7 +42,7 @@ locations, not status.
 - Every metric is a `Metric` with explicit availability; never publish zero for unknown. New metric keys are added to `crates/rtop-collectors/src/metrics.rs` (a test enforces it) and encode their unit in the suffix.
 - Every queue, cache and history is bounded.
 - A key binding is added only to `BINDINGS` in `keymap.rs`; help is generated from it and mouse input maps to the same `Cmd`s.
-- UI changes are checked visually: `make shots`, then look at `target/shots/*.png`.
+- UI changes are checked visually: `make shots`, then look at `target/shots/*.webp`.
 
 ## Workflow
 
