@@ -1,0 +1,16 @@
+[package]
+name = "rtop-core"
+description = "Kernel-independent telemetry graph, availability semantics, counters and history for rtop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true
