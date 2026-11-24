@@ -33,7 +33,7 @@ RELEASE_TESTS ?= check test
 
 .DEFAULT_GOAL := build
 .PHONY: all build build/debug build/release install uninstall run run/stats \
-	test test/unit test/e2e check check/fmt check/clippy check/doc check/privacy check/audit check/deny \
+	test test/unit test/e2e check check/fmt check/clippy check/doc check/privacy check/audit \
 	fmt shots package/dist release release/patch release/minor release/major \
 	clean help _require-cargo-release
 
@@ -109,10 +109,6 @@ check/privacy:
 ## check/audit - RustSec advisory scan of Cargo.lock (needs cargo-audit)
 check/audit:
 	$(CARGO) audit
-
-## check/deny - license and advisory audit (needs cargo-deny)
-check/deny:
-	$(CARGO) deny check
 
 ## fmt - format all code
 fmt:
