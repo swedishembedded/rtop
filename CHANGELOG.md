@@ -31,4 +31,11 @@ interfaces covered by semantic versioning are the command-line options, the
 - `rtop --stats` YAML/JSON export with `--interval`, `--timeout`, `--strict`.
 - `--demo` simulated machine, `--sysroot` captured trees, `--read-only`,
   `--no-mouse`.
+- CPU view shows every logical CPU without scrolling: full cells, compact
+  cells, then a heat strip, depending on terminal size and CPU count.
+- Tables start without a selection and `Esc` clears it, so the view stays
+  put while rows re-sort.
 - Makefile, CI, semantic release pipeline, privacy and advisory gates.
+- Test suites: unit, property, render (all views, all sizes), PTY
+  journeys, fault injection, differential (free, nproc, df, ss, ps),
+  performance and latency budgets, and libFuzzer targets.

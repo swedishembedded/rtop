@@ -111,7 +111,9 @@ actions are disabled; there is no racy fallback.
 - `!` switches to emergency mode: only the essential collectors (host, CPU,
   memory, pressure, processes, rtop's own overhead) keep running.
 - rtop reports its own CPU, memory and thread count, and the cost and missed
-  deadlines of every telemetry source, in view `8`.
+  deadlines of every telemetry source, in view `8`. Expensive detail (socket
+  tables, descriptor scans, per-process I/O, GPU clients) is collected only
+  while a view shows it; telemetry redraws are coalesced to four per second.
 
 ## Everything on screen is scriptable
 
@@ -128,9 +130,11 @@ one CPU). The red `D` marks a process in uninterruptible kernel wait.
 
 ![Process tree](docs/screenshots/processes-tree.webp)
 
-**CPU** (`2`). Per-logical-CPU usage and frequency with performance (`P`) and
-efficiency (`E`) core types read from sysfs, next to scheduler statistics and
-CPU pressure.
+**CPU** (`2`). Every logical CPU is on screen at once, with usage, frequency
+and performance (`P`) or efficiency (`E`) core type read from sysfs. The grid
+adds columns as the terminal allows and switches to compact cells, then to a
+one-cell-per-CPU heat strip, before it would ever scroll a saturated core out
+of view.
 
 ![CPU view with hybrid core types](docs/screenshots/cpu.webp)
 
