@@ -136,6 +136,9 @@ pub struct NodeUpdate {
     pub kind: EntityKind,
     pub attrs: Vec<(&'static str, Attr)>,
     pub metrics: Vec<(&'static str, Metric)>,
+    /// When false the update only augments an entity another collector
+    /// owns; it is dropped if the entity does not exist (yet).
+    pub create: bool,
 }
 
 impl NodeUpdate {
@@ -145,6 +148,16 @@ impl NodeUpdate {
             kind,
             attrs: Vec::new(),
             metrics: Vec::new(),
+            create: true,
+        }
+    }
+
+    /// An update that adds metrics/attributes to an existing entity without
+    /// ever creating it (e.g. network rates for a process).
+    pub fn augment(kind: EntityKind, id: EntityId) -> Self {
+        NodeUpdate {
+            create: false,
+            ..NodeUpdate::new(kind, id)
         }
     }
 
@@ -512,6 +525,9 @@ impl SystemGraph {
                 continue;
             }
             let is_new = !self.nodes.contains_key(&upd.id);
+            if is_new && !upd.create {
+                continue;
+            }
             if is_new && self.nodes.len() >= self.limits.max_nodes {
                 rejected += 1;
                 continue;
@@ -971,6 +987,20 @@ mod tests {
         assert!(g.is_resolved(&e));
         assert_eq!(g.outgoing(&pid(7)).count(), 1);
         assert_eq!(g.incoming(&sock(9)).count(), 1);
+    }
+
+    #[test]
+    fn augment_never_creates_entities() {
+        let mut g = SystemGraph::default();
+        let mut s = GraphPatch::new(SOCK, 1, Timestamp(1));
+        s.node(NodeUpdate::augment(EntityKind::Process, pid(1)).metric("rx", Metric::u64(1)));
+        g.apply(s);
+        assert!(g.node(&pid(1)).is_none());
+        g.apply(procs(1, &[1]));
+        let mut s = GraphPatch::new(SOCK, 2, Timestamp(2));
+        s.node(NodeUpdate::augment(EntityKind::Process, pid(1)).metric("rx", Metric::u64(1)));
+        g.apply(s);
+        assert!(g.node(&pid(1)).unwrap().metric("rx").is_some());
     }
 
     #[test]
