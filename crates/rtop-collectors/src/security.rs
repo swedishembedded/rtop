@@ -267,10 +267,6 @@ impl Collector for SecurityCollector {
             }
         }
         self.rates.sweep();
-        h.push_metric(
-            "firewall_rule_counters",
-            Metric::unavailable(Unavailable::Unsupported),
-        );
         patch.node(h);
         let degraded = self.kmsg_error.map(|r| {
             format!("kernel log unavailable ({r}); needs CAP_SYSLOG when dmesg_restrict=1")

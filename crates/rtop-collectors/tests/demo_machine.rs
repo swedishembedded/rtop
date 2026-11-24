@@ -108,6 +108,29 @@ fn demo_graph_has_connected_workloads() {
     let bat = g.nodes_of(EntityKind::Battery).next().unwrap();
     assert!(bat.f64("time_remaining_seconds").unwrap() > 0.0);
     assert!(g.events().any(|e| e.message.contains("AppArmor")));
+    // Firewall: counted rules have rates, the uninstrumented one is N/A.
+    let rules: Vec<_> = g.nodes_of(EntityKind::FirewallRule).collect();
+    assert_eq!(rules.len(), 6);
+    let deny = rules
+        .iter()
+        .find(|r| r.text("name") == Some("default deny"))
+        .unwrap();
+    assert!(deny.f64("packets_per_second").unwrap() > 0.0);
+    let output = rules
+        .iter()
+        .find(|r| r.text("chain") == Some("output"))
+        .unwrap();
+    assert_eq!(
+        output.metric("packets_per_second"),
+        Some(&Metric::Unavailable(Unavailable::NotMeasurable))
+    );
+    assert!(
+        g.node(&EntityId::host())
+            .unwrap()
+            .f64("firewall_drop_packets_per_second")
+            .unwrap()
+            > 0.0
+    );
     // Remote NFS mount that fails is unavailable, not zero.
     let nfs = g
         .node(&EntityId::new(EntityKind::Mount, "/srv/backup"))

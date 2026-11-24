@@ -21,6 +21,8 @@
 
 pub mod fs;
 pub mod memfs;
+pub mod netlink;
+pub mod nftables;
 pub mod parse;
 pub mod sockdiag;
 pub mod sys;

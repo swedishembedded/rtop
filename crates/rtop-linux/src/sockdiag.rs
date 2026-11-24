@@ -13,7 +13,6 @@
 //! Both backends observe the network namespace rtop runs in.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -191,10 +190,6 @@ mod nl {
     use super::*;
 
     const SOCK_DIAG_BY_FAMILY: u16 = 20;
-    const NLMSG_ERROR: u16 = 2;
-    const NLMSG_DONE: u16 = 3;
-    const NLM_F_REQUEST: u16 = 1;
-    const NLM_F_DUMP: u16 = 0x300;
     const INET_DIAG_INFO: u16 = 2;
     const UNIX_DIAG_NAME: u16 = 0;
     const UNIX_DIAG_PEER: u16 = 2;
@@ -202,142 +197,7 @@ mod nl {
     const UDIAG_SHOW_NAME: u32 = 1;
     const UDIAG_SHOW_PEER: u32 = 4;
     const UDIAG_SHOW_RQLEN: u32 = 16;
-    /// Upper bound on one dump, so a pathological table cannot exhaust memory.
-    const MAX_DUMP_BYTES: usize = 256 << 20;
-
-    fn open(timeout: Duration) -> Result<OwnedFd, KernelError> {
-        // SAFETY: plain socket creation.
-        let fd = unsafe {
-            libc::socket(
-                libc::AF_NETLINK,
-                libc::SOCK_DGRAM | libc::SOCK_CLOEXEC,
-                libc::NETLINK_SOCK_DIAG,
-            )
-        };
-        if fd < 0 {
-            return Err(KernelError::from_io(&std::io::Error::last_os_error()));
-        }
-        // SAFETY: fresh fd owned by us.
-        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
-        let tv = libc::timeval {
-            tv_sec: timeout.as_secs() as libc::time_t,
-            tv_usec: timeout.subsec_micros() as libc::suseconds_t,
-        };
-        // SAFETY: valid fd and correctly sized option value.
-        unsafe {
-            libc::setsockopt(
-                fd.as_raw_fd(),
-                libc::SOL_SOCKET,
-                libc::SO_RCVTIMEO,
-                (&tv as *const libc::timeval).cast(),
-                std::mem::size_of::<libc::timeval>() as u32,
-            );
-        }
-        Ok(fd)
-    }
-
-    fn request(fd: &OwnedFd, payload: &[u8]) -> Result<(), KernelError> {
-        let len = 16 + payload.len();
-        let mut msg = Vec::with_capacity(len);
-        msg.extend_from_slice(&(len as u32).to_ne_bytes());
-        msg.extend_from_slice(&SOCK_DIAG_BY_FAMILY.to_ne_bytes());
-        msg.extend_from_slice(&(NLM_F_REQUEST | NLM_F_DUMP).to_ne_bytes());
-        msg.extend_from_slice(&1u32.to_ne_bytes()); // seq
-        msg.extend_from_slice(&0u32.to_ne_bytes()); // pid (kernel assigns)
-        msg.extend_from_slice(payload);
-        // SAFETY: zeroed sockaddr_nl addresses the kernel.
-        let mut addr: libc::sockaddr_nl = unsafe { std::mem::zeroed() };
-        addr.nl_family = libc::AF_NETLINK as u16;
-        // SAFETY: valid buffers and address.
-        let r = unsafe {
-            libc::sendto(
-                fd.as_raw_fd(),
-                msg.as_ptr().cast(),
-                msg.len(),
-                0,
-                (&addr as *const libc::sockaddr_nl).cast(),
-                std::mem::size_of::<libc::sockaddr_nl>() as u32,
-            )
-        };
-        if r < 0 {
-            Err(KernelError::from_io(&std::io::Error::last_os_error()))
-        } else {
-            Ok(())
-        }
-    }
-
-    /// Receives a dump, calling `each(payload)` for every SOCK_DIAG message.
-    fn receive(fd: &OwnedFd, mut each: impl FnMut(&[u8])) -> Result<(), KernelError> {
-        let mut buf = vec![0u8; 64 * 1024];
-        let mut total = 0usize;
-        loop {
-            // SAFETY: buf is valid for writes of its length.
-            let n = unsafe { libc::recv(fd.as_raw_fd(), buf.as_mut_ptr().cast(), buf.len(), 0) };
-            if n < 0 {
-                return Err(KernelError::from_io(&std::io::Error::last_os_error()));
-            }
-            let n = n as usize;
-            total += n;
-            if total > MAX_DUMP_BYTES {
-                return Err(KernelError::TooLarge {
-                    limit: MAX_DUMP_BYTES,
-                });
-            }
-            let mut off = 0;
-            while off + 16 <= n {
-                let len =
-                    u32::from_ne_bytes(buf[off..off + 4].try_into().expect("4 bytes")) as usize;
-                let ty = u16::from_ne_bytes(buf[off + 4..off + 6].try_into().expect("2 bytes"));
-                if len < 16 || off + len > n {
-                    return Err(KernelError::Invalid("netlink length"));
-                }
-                match ty {
-                    NLMSG_DONE => return Ok(()),
-                    NLMSG_ERROR => {
-                        let code = buf
-                            .get(off + 16..off + 20)
-                            .map(|b| i32::from_ne_bytes(b.try_into().expect("4 bytes")))
-                            .unwrap_or(-1);
-                        return if code == 0 {
-                            Ok(())
-                        } else {
-                            Err(KernelError::Os(-code))
-                        };
-                    }
-                    SOCK_DIAG_BY_FAMILY => each(&buf[off + 16..off + len]),
-                    _ => {}
-                }
-                off += (len + 3) & !3;
-            }
-        }
-    }
-
-    /// Iterates `(type, payload)` route attributes.
-    fn attrs(mut b: &[u8]) -> impl Iterator<Item = (u16, &[u8])> {
-        std::iter::from_fn(move || {
-            if b.len() < 4 {
-                return None;
-            }
-            let len = u16::from_ne_bytes([b[0], b[1]]) as usize;
-            let ty = u16::from_ne_bytes([b[2], b[3]]);
-            if len < 4 || len > b.len() {
-                return None;
-            }
-            let payload = &b[4..len];
-            b = &b[((len + 3) & !3).min(b.len())..];
-            Some((ty & 0x3fff, payload))
-        })
-    }
-
-    fn u32_at(b: &[u8], off: usize) -> Option<u32> {
-        b.get(off..off + 4)
-            .map(|s| u32::from_ne_bytes(s.try_into().expect("4 bytes")))
-    }
-
-    fn u64_at(b: &[u8], off: usize) -> Option<u64> {
-        b.get(off..off + 8)
-            .map(|s| u64::from_ne_bytes(s.try_into().expect("8 bytes")))
-    }
+    use crate::netlink::{self, attrs, u32_ne as u32_at, u64_ne as u64_at};
 
     fn addr(family: u8, port_be: &[u8], ip: &[u8]) -> Option<SocketAddr> {
         let port = u16::from_be_bytes([port_be[0], port_be[1]]);
@@ -425,7 +285,7 @@ mod nl {
         proto: InetProto,
         timeout: Duration,
     ) -> Result<Vec<InetSocket>, KernelError> {
-        let fd = open(timeout)?;
+        let sock = netlink::Socket::open(libc::NETLINK_SOCK_DIAG, timeout)?;
         let mut req = vec![0u8; 56];
         req[0] = family;
         req[1] = match proto {
@@ -435,23 +295,23 @@ mod nl {
         req[2] = 1 << (INET_DIAG_INFO - 1); // idiag_ext
         req[4..8].copy_from_slice(&u32::MAX.to_ne_bytes()); // all states
         req[48..56].copy_from_slice(&[0xff; 8]); // INET_DIAG_NOCOOKIE
-        request(&fd, &req)?;
         let mut out = Vec::new();
-        receive(&fd, |m| out.extend(decode_inet(proto, m)))?;
+        sock.dump(SOCK_DIAG_BY_FAMILY, &req, |m| {
+            out.extend(decode_inet(proto, m))
+        })?;
         Ok(out)
     }
 
     pub fn dump_unix(timeout: Duration) -> Result<Vec<UnixSocket>, KernelError> {
-        let fd = open(timeout)?;
+        let sock = netlink::Socket::open(libc::NETLINK_SOCK_DIAG, timeout)?;
         let mut req = vec![0u8; 24];
         req[0] = libc::AF_UNIX as u8;
         req[4..8].copy_from_slice(&u32::MAX.to_ne_bytes());
         req[12..16]
             .copy_from_slice(&(UDIAG_SHOW_NAME | UDIAG_SHOW_PEER | UDIAG_SHOW_RQLEN).to_ne_bytes());
         req[16..24].copy_from_slice(&[0xff; 8]);
-        request(&fd, &req)?;
         let mut out = Vec::new();
-        receive(&fd, |m| out.extend(decode_unix(m)))?;
+        sock.dump(SOCK_DIAG_BY_FAMILY, &req, |m| out.extend(decode_unix(m)))?;
         Ok(out)
     }
 }
@@ -464,6 +324,7 @@ mod tests {
     use crate::memfs::MemoryKernelFs;
     use proptest::prelude::*;
     use std::io::{Read, Write};
+    use std::os::fd::AsRawFd;
     use std::os::unix::fs::MetadataExt;
 
     #[test]

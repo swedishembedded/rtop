@@ -33,6 +33,7 @@ pub mod cpu;
 pub mod demo;
 pub mod docker;
 pub mod filesystems;
+pub mod firewall;
 pub mod gpu;
 pub mod host;
 pub mod inspect;
@@ -166,6 +167,7 @@ impl Subscriptions {
 pub struct Env {
     pub fs: Arc<dyn KernelFs>,
     pub diag: Arc<dyn SockDiag>,
+    pub firewall: Arc<dyn rtop_linux::nftables::FirewallSource>,
     pub subscriptions: Arc<Subscriptions>,
     /// `USER_HZ` of the observed system.
     pub clock_ticks: u64,
@@ -182,6 +184,7 @@ impl Env {
         let fs: Arc<dyn KernelFs> = Arc::new(rtop_linux::RealKernelFs::live());
         Env {
             diag: Arc::new(rtop_linux::sockdiag::NetlinkDiag::new(fs.clone())),
+            firewall: Arc::new(rtop_linux::nftables::Nftables::default()),
             fs,
             subscriptions,
             clock_ticks: rtop_linux::sys::clock_ticks(),
@@ -200,6 +203,7 @@ impl Env {
     pub fn simulated(fs: Arc<dyn KernelFs>, subscriptions: Arc<Subscriptions>) -> Self {
         Env {
             diag: Arc::new(rtop_linux::sockdiag::ProcNetDiag::new(fs.clone())),
+            firewall: Arc::new(rtop_linux::nftables::NoFirewall),
             fs,
             subscriptions,
             clock_ticks: 100,
@@ -227,6 +231,7 @@ pub fn all(env: &Env) -> Vec<Box<dyn Collector>> {
         Box::new(sensors::SensorCollector::new(env.clone())),
         Box::new(gpu::GpuCollector::new(env.clone())),
         Box::new(security::SecurityCollector::new(env.clone())),
+        Box::new(firewall::FirewallCollector::new(env.clone())),
         Box::new(monitor::MonitorCollector::new(env.clone())),
     ]
 }

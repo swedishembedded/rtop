@@ -95,7 +95,7 @@ impl View {
             View::Network => &[Panel::Communication, Panel::Sockets, Panel::Interfaces],
             View::Containers => &[Panel::Containers, Panel::Services],
             View::Gpu => &[Panel::Gpus, Panel::GpuClients],
-            View::Security => &[Panel::Events, Panel::Collectors],
+            View::Security => &[Panel::Events, Panel::Firewall, Panel::Collectors],
             View::Sensors => &[Panel::Sensors, Panel::Batteries],
         }
     }
@@ -129,6 +129,7 @@ pub enum Panel {
     Sensors,
     Batteries,
     Events,
+    Firewall,
     Collectors,
     /// Relationships of the inspected entity.
     Relations,
@@ -151,6 +152,7 @@ impl Panel {
             Panel::Sensors => "Sensors",
             Panel::Batteries => "Power",
             Panel::Events => "Security & kernel events",
+            Panel::Firewall => "Firewall rules",
             Panel::Collectors => "Telemetry sources",
             Panel::Relations => "Relationships",
         }
@@ -171,6 +173,7 @@ impl Panel {
             Panel::Gpus => &[Gpu, Mem, Name],
             Panel::GpuClients => &[Gpu, Mem, Name],
             Panel::Sensors => &[Name, Value],
+            Panel::Firewall => &[Net, Name],
             Panel::Batteries | Panel::Events | Panel::Collectors | Panel::Relations => &[Name],
         }
     }

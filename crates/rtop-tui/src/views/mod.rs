@@ -1010,6 +1010,24 @@ pub fn security(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
             ("OOM kills", c.hs("oom_kills_total", Fmt::Count)),
         ]),
         kv_line(vec![
+            (
+                "firewall matches",
+                c.hs("firewall_packets_per_second", Fmt::PerSecond),
+            ),
+            (
+                "drops",
+                c.hs("firewall_drop_packets_per_second", Fmt::PerSecond),
+            ),
+            (
+                "counted rules",
+                Span::raw(format!(
+                    "{} of {}",
+                    na_or(c.h("firewall_counted_rules"), Fmt::Count),
+                    na_or(c.h("firewall_rules"), Fmt::Count)
+                )),
+            ),
+        ]),
+        kv_line(vec![
             ("conntrack", c.hs("conntrack_entries", Fmt::Count)),
             ("of", c.hs("conntrack_max", Fmt::Count)),
             ("drops", c.hs("conntrack_drops_per_second", Fmt::PerSecond)),
@@ -1018,34 +1036,36 @@ pub fn security(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
                 c.hs("conntrack_invalid_per_second", Fmt::PerSecond),
             ),
         ]),
-        kv_line(vec![
-            (
-                "firewall rule counters",
-                c.hs("firewall_rule_counters", Fmt::Count),
-            ),
-            (
-                "rtop itself",
-                Span::raw(format!(
-                    "{} CPU · {} RSS · nice {}",
-                    na_or(c.h("rtop_cpu_percent"), Fmt::Percent),
-                    c.h("rtop_rss_bytes").map_or("N/A".into(), format_bytes),
-                    na_or(c.h("rtop_nice"), Fmt::Count)
-                )),
-            ),
-        ]),
+        kv_line(vec![(
+            "rtop itself",
+            Span::raw(format!(
+                "{} CPU · {} RSS · nice {}",
+                na_or(c.h("rtop_cpu_percent"), Fmt::Percent),
+                c.h("rtop_rss_bytes").map_or("N/A".into(), format_bytes),
+                na_or(c.h("rtop_nice"), Fmt::Count)
+            )),
+        )]),
         Line::from(Span::styled(
             "Observation only: rtop never changes audit, logging or firewall configuration.",
             theme::faint(),
         )),
     ];
-    two_tables(
-        f,
+    let sum_h = if area.height >= 28 { 7 } else { 0 };
+    let r = rows(
         area,
-        c,
-        hits,
-        55,
-        Some(("Security & telemetry health", lines, Vec::new())),
+        [
+            Constraint::Length(sum_h),
+            Constraint::Percentage(40),
+            Constraint::Percentage(30),
+            Constraint::Min(4),
+        ],
     );
+    if sum_h > 0 {
+        summary_block(f, r[0], "Security & telemetry health", lines, Vec::new());
+    }
+    panel_table(f, r[1], c, 0, hits);
+    panel_table(f, r[2], c, 1, hits);
+    panel_table(f, r[3], c, 2, hits);
 }
 
 pub fn generic(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap, first_pct: u16) {

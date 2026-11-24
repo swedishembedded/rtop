@@ -23,6 +23,9 @@ interfaces covered by semantic versioning are the command-line options, the
   relationships and deep process detail, Vim modes, search and filter
   expressions, sorting, process tree, mouse support, context menus,
   generated help, insights and emergency mode.
+- Read-only nftables rule counters (per-rule packet/byte totals and rates,
+  verdicts, comments) over `NETLINK_NETFILTER`; uninstrumented rules are
+  reported as not measurable.
 - PID-reuse-safe process actions through pidfd: terminate with
   confirmation, immediate force kill, suspend, resume, any signal.
 - `rtop --stats` YAML/JSON export with `--interval`, `--timeout`, `--strict`.

@@ -162,8 +162,8 @@ memory, threads, open descriptors, namespaces and resource limits.
 ![Process inspector](docs/screenshots/inspect-process.webp)
 
 **Security and telemetry health** (`8`). Kernel-log denials, OOM kills and
-firewall log matches, conntrack counters, and the state of every collector.
-Per-rule firewall counters are honestly `N/A (unsup)`.
+firewall log matches, conntrack counters, per-rule nftables hit rates, and the
+state of every collector.
 
 ![Security events and telemetry sources](docs/screenshots/security.webp)
 
@@ -483,6 +483,7 @@ rtop --stats --strict > snapshot.yaml || echo "incomplete snapshot"
 | Sensors and power | hwmon, thermal zones, RAPL, power supplies | Temperatures, fans, package power, battery energy and health |
 | GPU | DRM sysfs, DRM fdinfo, NVML | Device utilisation and memory; per-process engine time and memory |
 | Security | `/dev/kmsg`, conntrack statistics | LSM denials, OOM kills, firewall log matches, conntrack drops |
+| Firewall | nftables over `NETLINK_NETFILTER` (read-only dump) | Per-rule packet and byte totals and rates for rules that have a `counter`; rules without one are `N/A`, never zero; needs `CAP_NET_ADMIN` |
 | rtop itself | procfs | Its own CPU, memory, threads and nice value |
 
 NVML is loaded at runtime from `libnvidia-ml.so.1` when it is present; rtop
@@ -498,6 +499,7 @@ rtop is designed to run as an ordinary user and never asks for more.
 | I/O rates of other users' processes | Access to their `/proc/PID/io` | `N/A (perm)` |
 | Socket owners and descriptors of other users' processes | Access to their `/proc/PID/fd` | Sockets are listed without an owner |
 | Kernel-log security events | `CAP_SYSLOG` when `kernel.dmesg_restrict=1` | Kernel log source unavailable; other sources continue |
+| Per-rule firewall counters | `CAP_NET_ADMIN` to dump the nftables ruleset | The firewall source reports permission denied |
 | Docker names, images, volumes | Read access to the Docker socket (`DOCKER_HOST` or `/var/run/docker.sock`) | Containers still appear, from cgroups alone |
 | Signalling a process | The usual kernel permission to signal it | "permission denied" is reported |
 
@@ -601,8 +603,10 @@ plus a build with the minimum supported Rust version.
   of being guessed from interface totals.
 - **TCP peers are matched only within the observed network namespace.** A
   connection whose other end is elsewhere appears as a remote endpoint.
-- **Per-rule firewall counters are not implemented.** Security events come
-  from the kernel log and conntrack statistics; there is no nftables provider.
+- **Firewall counters come from existing instrumentation only.** rtop reads
+  nftables rules and their `counter` expressions but never adds counters or
+  enables tracing; rules without a counter show `N/A`. Reading the ruleset
+  needs `CAP_NET_ADMIN`. Legacy iptables counters are not read.
 - **Exclusive Docker volume usage is reported as not measurable.** rtop shows
   the capacity of the backing filesystem and does not present it as the
   volume's own usage.

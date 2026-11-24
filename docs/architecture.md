@@ -48,7 +48,8 @@ collectors ── GraphPatch ──▶ runtime ──▶ graph owner (event loop
 ## Known limitations
 
 - cgroup v1 hierarchies are not walked; containers there are not grouped.
-- Per-rule nftables counters and eBPF-based per-process UDP/Unix traffic are
-  not implemented; their metrics report `unsupported`.
+- eBPF-based per-process UDP/Unix traffic is not implemented; those
+  metrics report `not_measurable`. Firewall counters are read from existing
+  nftables `counter` expressions only; legacy iptables is not read.
 - Socket relationships cover the network namespace rtop runs in.
 - NVML support is exercised only where an NVIDIA driver is present.

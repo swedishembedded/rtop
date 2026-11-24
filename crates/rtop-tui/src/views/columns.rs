@@ -779,6 +779,57 @@ pub fn power(g: &SystemGraph) -> Vec<Column<'_>> {
     ]
 }
 
+pub fn firewall(g: &SystemGraph) -> Vec<Column<'_>> {
+    vec![
+        Column::new("RULE", 20, move |r, _, _| {
+            (
+                node(g, r).map_or("", |n| n.label()).to_owned(),
+                Style::default(),
+            )
+        })
+        .flex()
+        .sort(SortKey::Name),
+        Column::new("CHAIN", 14, move |r, _, _| {
+            let n = node(g, r);
+            (
+                n.map_or(String::new(), |n| {
+                    format!(
+                        "{} {}",
+                        n.text("family").unwrap_or(""),
+                        n.text("chain").unwrap_or("")
+                    )
+                }),
+                theme::dim(),
+            )
+        })
+        .prio(4),
+        Column::new("VERDICT", 8, move |r, _, _| {
+            let v = node(g, r)
+                .and_then(|n| n.text("verdict"))
+                .unwrap_or("")
+                .to_owned();
+            let st = match v.as_str() {
+                "drop" | "reject" => Style::default().fg(theme::BAD),
+                "accept" => Style::default().fg(theme::GOOD),
+                _ => theme::dim(),
+            };
+            (v, st)
+        }),
+        Column::new("PKT/S", 9, m(g, "packets_per_second", Fmt::PerSecond))
+            .right()
+            .sort(SortKey::Net),
+        Column::new("RATE", 10, m(g, "bytes_per_second", Fmt::Rate))
+            .right()
+            .prio(5),
+        Column::new("PACKETS", 10, m(g, "packets_total", Fmt::Count))
+            .right()
+            .prio(3),
+        Column::new("BYTES", 9, m(g, "bytes_total", Fmt::Bytes))
+            .right()
+            .prio(2),
+    ]
+}
+
 pub fn events(g: &SystemGraph) -> Vec<Column<'_>> {
     let ev = move |r: &RowId| match r {
         RowId::Seq(seq) => seq
@@ -992,6 +1043,7 @@ pub fn for_panel<'g>(
         Panel::Sensors => sensors(g),
         Panel::Batteries => power(g),
         Panel::Events => events(g),
+        Panel::Firewall => firewall(g),
         Panel::Collectors => collectors(g),
         Panel::Relations => relations(g, inspected),
     }
@@ -1005,6 +1057,9 @@ pub fn empty_text(p: Panel) -> &'static str {
         Panel::Communication => "No process-to-process connections observed",
         Panel::Batteries => "No battery or power supply",
         Panel::Events => "No security-related events observed since start",
+        Panel::Firewall => {
+            "No nftables rules (or reading them needs CAP_NET_ADMIN; see Telemetry sources)"
+        }
         Panel::Relations => "No relationships observed",
         _ => "Nothing to show",
     }

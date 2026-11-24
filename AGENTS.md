@@ -24,7 +24,7 @@ locations, not status.
 | Path | Owns |
 | ---- | ---- |
 | `crates/rtop-core` | Graph, patches and reconciliation, metric availability, counters, history, sanitising, units |
-| `crates/rtop-linux` | `KernelFs` (real, rooted, in-memory with fault injection), procfs/sysfs parsers, netlink sock_diag, syscalls |
+| `crates/rtop-linux` | `KernelFs` (real, rooted, in-memory with fault injection), procfs/sysfs parsers, netlink (sock_diag, nftables), syscalls |
 | `crates/rtop-collectors` | One collector per subsystem, metric registry (`metrics.rs`), process inspection, demo machine |
 | `crates/rtop-runtime` | Worker threads, deadline scheduling, blocked-collector containment, emergency mode, `snapshot` |
 | `crates/rtop-actions` | pidfd-verified signalling |

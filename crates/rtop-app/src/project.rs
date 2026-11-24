@@ -114,6 +114,7 @@ fn node_value(g: &SystemGraph, n: &Node, key: SortKey) -> SortVal {
                 "tcp_tx_bytes_per_second",
                 "network_rx_bytes_per_second",
                 "network_tx_bytes_per_second",
+                "packets_per_second",
                 "rx_bytes_per_second",
                 "tx_bytes_per_second",
             ],
@@ -247,6 +248,7 @@ pub fn project(g: &SystemGraph, t: &TableState, ctx: ProjectionContext<'_>) -> R
         Panel::Gpus => Rows::flat(sorted_nodes(g, EntityKind::Gpu, t)),
         Panel::GpuClients => Rows::flat(sorted(g, edges(g, EdgeKind::UsesGpu, f), t)),
         Panel::Sensors => Rows::flat(sorted_nodes(g, EntityKind::Sensor, t)),
+        Panel::Firewall => Rows::flat(sorted_nodes(g, EntityKind::FirewallRule, t)),
         Panel::Batteries => {
             let mut v = nodes(g, EntityKind::Battery, f);
             v.extend(nodes(g, EntityKind::PowerSupply, f));

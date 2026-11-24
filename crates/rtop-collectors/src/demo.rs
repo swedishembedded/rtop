@@ -671,6 +671,8 @@ struct State {
     cg_usage: Vec<f64>,
     rapl_uj: f64,
     gpu_ns: f64,
+    /// (packets, bytes) per demo firewall rule.
+    fw: Vec<(f64, f64)>,
 }
 
 /// The simulated machine.
@@ -714,6 +716,71 @@ impl SockDiag for DemoDiag {
 
     fn backend(&self) -> &'static str {
         "demo"
+    }
+}
+
+/// Demo firewall: an nftables-like ruleset with advancing counters.
+/// (table, chain, handle, comment, verdict, has counter)
+type DemoRule = (
+    &'static str,
+    &'static str,
+    u64,
+    Option<&'static str>,
+    &'static str,
+    bool,
+);
+const FW_RULES: [DemoRule; 6] = [
+    (
+        "filter",
+        "input",
+        4,
+        Some("established,related"),
+        "accept",
+        true,
+    ),
+    ("filter", "input", 7, Some("ssh"), "accept", true),
+    ("filter", "input", 9, Some("invalid"), "drop", true),
+    ("filter", "input", 12, Some("default deny"), "drop", true),
+    (
+        "filter",
+        "forward",
+        21,
+        Some("docker bridge"),
+        "accept",
+        true,
+    ),
+    ("filter", "output", 30, None, "accept", false),
+];
+const FW_RATES: [f64; 6] = [112.0, 0.4, 3.0, 18.0, 64.0, 0.0];
+
+#[derive(Debug)]
+pub struct DemoFirewall {
+    state: Arc<Mutex<State>>,
+}
+
+impl rtop_linux::nftables::FirewallSource for DemoFirewall {
+    fn rules(&self) -> Result<Vec<rtop_linux::nftables::Rule>, KernelError> {
+        let s = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        Ok(FW_RULES
+            .iter()
+            .zip(&s.fw)
+            .map(
+                |((table, chain, handle, comment, verdict, counted), (p, b))| {
+                    // Through the kernel encoding, so the real decoder is exercised.
+                    let r = rtop_linux::nftables::Rule {
+                        family: "inet",
+                        table: (*table).into(),
+                        chain: (*chain).into(),
+                        handle: *handle,
+                        counter: counted.then_some((*p as u64, *b as u64)),
+                        verdict: Some((*verdict).into()),
+                        comment: comment.map(Into::into),
+                    };
+                    rtop_linux::nftables::decode_rule(&rtop_linux::nftables::encode_rule(&r))
+                        .expect("demo rule decodes")
+                },
+            )
+            .collect())
     }
 }
 
@@ -813,6 +880,14 @@ impl DemoMachine {
             cg_usage: vec![0.0; 16],
             rapl_uj: 0.0,
             gpu_ns: 0.0,
+            fw: vec![
+                (2.8e5, 1.8e7),
+                (1.2e3, 9.0e4),
+                (310.0, 1.9e4),
+                (9.6e3, 5.1e5),
+                (4.4e4, 3.1e7),
+                (0.0, 0.0),
+            ],
         };
         let m = DemoMachine {
             fs: Arc::new(MemoryKernelFs::new()),
@@ -830,6 +905,9 @@ impl DemoMachine {
     pub fn env(&self, subscriptions: Arc<Subscriptions>) -> Env {
         let mut env = Env::simulated(self.fs.clone(), subscriptions);
         env.diag = Arc::new(DemoDiag {
+            state: self.state.clone(),
+        });
+        env.firewall = Arc::new(DemoFirewall {
             state: self.state.clone(),
         });
         env
@@ -924,6 +1002,11 @@ impl DemoMachine {
             }
             s.rapl_uj += 18.5e6 * dt * (1.0 + 0.2 * (t * 0.6).sin());
             s.gpu_ns += 0.34e9 * dt;
+            for (i, rate) in FW_RATES.iter().enumerate() {
+                let r = rate * (1.0 + 0.4 * (t * 0.7 + i as f64).sin());
+                s.fw[i].0 += r * dt;
+                s.fw[i].1 += r * 620.0 * dt;
+            }
             let socks: Vec<(f64, f64)> = s.socks.iter().map(|d| d.rate).collect();
             for (b, r) in s.tcp_bytes.iter_mut().zip(socks) {
                 b.0 += r.0 * dt * (1.0 + 0.3 * (t * 1.1).sin());
