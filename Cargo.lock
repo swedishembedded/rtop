@@ -409,6 +409,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rtop-actions"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "rtop-core",
+ "rtop-linux",
+]
+
+[[package]]
 name = "rtop-collectors"
 version = "0.1.0"
 dependencies = [

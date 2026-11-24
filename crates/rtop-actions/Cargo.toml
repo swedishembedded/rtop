@@ -1,0 +1,16 @@
+[package]
+name = "rtop-actions"
+description = "PID-reuse-safe process management for rtop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rtop-core.workspace = true
+rtop-linux.workspace = true
+libc.workspace = true
+
+[lints]
+workspace = true

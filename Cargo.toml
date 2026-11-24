@@ -22,6 +22,11 @@ serde_json = "1"
 rtop-runtime = { path = "crates/rtop-runtime" }
 rtop-export = { path = "crates/rtop-export" }
 crossbeam-channel = "0.5"
+rtop-actions = { path = "crates/rtop-actions" }
+rtop-app = { path = "crates/rtop-app" }
+rtop-tui = { path = "crates/rtop-tui" }
+ratatui = "0.30"
+unicode-width = "0.2"
 proptest = "1"
 
 [workspace.lints.rust]
