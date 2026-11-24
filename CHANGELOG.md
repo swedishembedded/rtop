@@ -8,6 +8,8 @@ interfaces covered by semantic versioning are the command-line options, the
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-24
+
 ### Added
 
 - Unified telemetry graph: entities, relationships and metrics from every

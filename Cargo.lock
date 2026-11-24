@@ -1434,7 +1434,7 @@ checksum = "d902046e6a28a1e4c3cab97258a0ce11e994903f01c2d97a9447a0b3df85f4f6"
 
 [[package]]
 name = "rtop"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "clap",
  "crossbeam-channel",
@@ -1455,7 +1455,7 @@ dependencies = [
 
 [[package]]
 name = "rtop-actions"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "libc",
  "rtop-core",
@@ -1464,7 +1464,7 @@ dependencies = [
 
 [[package]]
 name = "rtop-app"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "proptest",
  "rtop-actions",
@@ -1475,7 +1475,7 @@ dependencies = [
 
 [[package]]
 name = "rtop-collectors"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "libc",
  "proptest",
@@ -1486,14 +1486,14 @@ dependencies = [
 
 [[package]]
 name = "rtop-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "proptest",
 ]
 
 [[package]]
 name = "rtop-export"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "rtop-collectors",
  "rtop-core",
@@ -1504,7 +1504,7 @@ dependencies = [
 
 [[package]]
 name = "rtop-linux"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "libc",
  "proptest",
@@ -1512,7 +1512,7 @@ dependencies = [
 
 [[package]]
 name = "rtop-runtime"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "crossbeam-channel",
  "rtop-collectors",
@@ -1522,7 +1522,7 @@ dependencies = [
 
 [[package]]
 name = "rtop-tui"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "crossbeam-channel",
  "proptest",
