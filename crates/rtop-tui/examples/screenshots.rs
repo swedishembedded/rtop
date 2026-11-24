@@ -67,14 +67,7 @@ impl Session {
 
     fn sample(&mut self) {
         self.pass += 1;
-        for c in &mut self.collectors {
-            if let Ok(x) = c.sample(&SampleContext {
-                now: Timestamp::from_millis(self.pass * 1000),
-                sequence: self.pass,
-            }) {
-                self.g.apply(x.patch);
-            }
-        }
+        sample_into(&mut self.collectors, &mut self.g, self.pass);
         self.m.advance(1.0);
         self.ev(Event::GraphChanged);
     }
@@ -112,21 +105,46 @@ impl Session {
     }
 }
 
+/// Samples every collector once and records its health the way the
+/// runtime would.
+fn sample_into(cs: &mut [Box<dyn rtop_collectors::Collector>], g: &mut SystemGraph, seq: u64) {
+    for c in cs.iter_mut() {
+        let d = c.descriptor();
+        let started = std::time::Instant::now();
+        let r = c.sample(&SampleContext {
+            now: Timestamp::from_millis(seq * 1000),
+            sequence: seq,
+        });
+        let mut st = rtop_core::CollectorStatus::pending(d.interval);
+        st.last_duration = Some(started.elapsed());
+        st.samples = seq;
+        match r {
+            Ok(x) => {
+                st.state = if x.degraded.is_some() {
+                    rtop_core::CollectorState::Degraded
+                } else {
+                    rtop_core::CollectorState::Available
+                };
+                st.detail = x.degraded;
+                g.apply(x.patch);
+            }
+            Err(e) => {
+                st.state = rtop_core::CollectorState::Unavailable;
+                st.reason = Some(e.reason);
+                st.detail = Some(e.detail);
+            }
+        }
+        g.set_collector_status(d.id, st);
+    }
+}
+
 /// Rebuilds the graph by sampling the (shared) demo machine twice.
 fn clone_graph(m: &DemoMachine, pass: u64) -> SystemGraph {
     let mut g = SystemGraph::default();
     let env = m.env(Subscriptions::all());
     let mut cs = m.collectors(&env);
     for i in 0..2 {
-        let seq = pass * 10 + i;
-        for c in &mut cs {
-            if let Ok(x) = c.sample(&SampleContext {
-                now: Timestamp::from_millis(seq * 1000),
-                sequence: seq,
-            }) {
-                g.apply(x.patch);
-            }
-        }
+        sample_into(&mut cs, &mut g, pass * 10 + i);
         m.advance(1.0);
     }
     g

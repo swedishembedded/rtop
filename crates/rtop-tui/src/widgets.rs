@@ -372,9 +372,6 @@ fn table_title(t: &TableState, n: usize, focused: bool, s: &AppState) -> Line<'s
         ));
     }
     if t.panel == Panel::Processes {
-        spans.push(Span::styled("CPU% per core ", theme::faint()));
-    }
-    if t.panel == Panel::Processes {
         spans.push(Span::styled("100% = one CPU ", theme::faint()));
     }
     if t.panel == Panel::Processes && s.tree && t.filter.is_empty() {
