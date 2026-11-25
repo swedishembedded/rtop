@@ -87,7 +87,8 @@ impl TieredSeries {
             live_capacity,
             pending: Vec::with_capacity(factor.max(1)),
             factor: factor.max(1),
-            coarse: VecDeque::new(),
+            // Full capacity up front: a series never grows after creation.
+            coarse: VecDeque::with_capacity(coarse_capacity),
             coarse_capacity,
             last_update: Timestamp::ZERO,
         }

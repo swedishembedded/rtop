@@ -33,7 +33,7 @@ RELEASE_TESTS ?= check test
 
 .DEFAULT_GOAL := build
 .PHONY: all build build/debug build/release install uninstall run run/stats \
-	test test/unit test/e2e test/performance test/fuzz check check/fmt check/clippy check/doc check/privacy check/audit \
+	test test/unit test/e2e test/performance test/soak test/fuzz check check/fmt check/clippy check/doc check/privacy check/audit \
 	fmt shots package/dist release release/patch release/minor release/major \
 	clean help _require-cargo-release
 
@@ -89,6 +89,11 @@ test/e2e:
 test/performance:
 	$(CARGO) test $(CARGO_FLAGS) --release -p rtop-tui --test performance -- --nocapture --test-threads=1
 	$(CARGO) test $(CARGO_FLAGS) --release -p rtop --test pty -- --nocapture --test-threads=1 budget
+
+SOAK_SECONDS ?= 300
+## test/soak - drive the real UI for SOAK_SECONDS; memory and CPU must stay flat (release build)
+test/soak:
+	SOAK_SECONDS=$(SOAK_SECONDS) $(CARGO) test $(CARGO_FLAGS) --release -p rtop --test pty -- --ignored --nocapture soak
 
 FUZZ_SECONDS ?= 60
 ## test/fuzz - run every fuzz target for FUZZ_SECONDS each (needs nightly and cargo-fuzz)

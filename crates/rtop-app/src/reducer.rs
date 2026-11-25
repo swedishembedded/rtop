@@ -1439,11 +1439,30 @@ fn record_history(s: &mut AppState, g: &SystemGraph) {
             }
         }
     }
-    if let Some(id) = s.location.inspect.clone()
-        && let Some(n) = g.node(&id)
+    let inspected = s.location.inspect.clone();
+    if let Some(id) = &inspected
+        && let Some(n) = g.node(id)
     {
         for k in n.metrics.keys().take(64) {
             s.history.push((id.clone(), k), n.f64(k), now);
         }
     }
+    // History never outlives its entity, and per-metric series exist only
+    // for the entity being inspected: memory stays proportional to the
+    // hardware, not to how long rtop has run.
+    s.history.retain(|(id, key)| {
+        if Some(id) == inspected.as_ref() {
+            return true;
+        }
+        match id.kind() {
+            Some(EntityKind::Host) => HOST_SERIES.contains(key),
+            Some(
+                EntityKind::LogicalCpu
+                | EntityKind::Gpu
+                | EntityKind::Interface
+                | EntityKind::BlockDevice,
+            ) => g.node(id).is_some(),
+            _ => false,
+        }
+    });
 }

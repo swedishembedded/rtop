@@ -418,3 +418,65 @@ fn budget_idle_overhead_and_memory() {
     assert!(cpu < 3.0, "{cpu:.2}% of one CPU");
     assert!(rss_kb < 64 * 1024, "{rss_kb} kB");
 }
+
+fn rss_kb(pid: u32) -> u64 {
+    std::fs::read_to_string(format!("/proc/{pid}/status"))
+        .unwrap()
+        .lines()
+        .find(|l| l.starts_with("VmRSS"))
+        .unwrap()
+        .split_whitespace()
+        .nth(1)
+        .unwrap()
+        .parse()
+        .unwrap()
+}
+
+/// Long-running stability: memory must not climb and CPU must not trend
+/// upward while the UI is driven through every view, inspections and
+/// relationship hops. `make test/soak` runs it (SOAK_SECONDS, default 300).
+#[test]
+#[ignore = "long-running; make test/soak"]
+fn soak_memory_and_cpu_stay_flat() {
+    let secs: u64 = std::env::var("SOAK_SECONDS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(300);
+    let mut t = Tui::launch(&[], 160, 48);
+    t.expect("Memory");
+    let pid = t.child.id();
+    let warmup = Duration::from_secs(60.min(secs / 4));
+    let start = Instant::now();
+    let mut windows: Vec<(u64, u64)> = Vec::new(); // (rss kB, cpu ticks in window)
+    let mut window_start = (Instant::now(), cpu_ticks(pid));
+    while start.elapsed() < Duration::from_secs(secs) {
+        for k in "0123456789".chars() {
+            t.send(&k.to_string());
+        }
+        t.send("1j\rj\r\x1b\x1b");
+        if window_start.0.elapsed() >= Duration::from_secs(30) {
+            let ticks = cpu_ticks(pid);
+            if start.elapsed() > warmup {
+                windows.push((rss_kb(pid), ticks - window_start.1));
+            }
+            window_start = (Instant::now(), ticks);
+        }
+    }
+    eprintln!("soak windows (rss kB, cpu ticks/30 s): {windows:?}");
+    assert!(windows.len() >= 2, "soak too short to judge");
+    let (first, last) = (windows[0], *windows.last().unwrap());
+    // Memory: no growth beyond allocator noise after warm-up.
+    assert!(
+        last.0 <= first.0 + 1024,
+        "RSS grew from {} to {} kB",
+        first.0,
+        last.0
+    );
+    // CPU: the last window may not cost meaningfully more than the first.
+    assert!(
+        last.1 <= first.1 * 3 / 2 + 20,
+        "CPU per window rose from {} to {} ticks",
+        first.1,
+        last.1
+    );
+}

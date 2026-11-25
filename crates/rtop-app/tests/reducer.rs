@@ -419,3 +419,33 @@ proptest! {
         let _ = EntityId::host();
     }
 }
+
+#[test]
+fn history_is_bounded_by_live_entities_not_by_runtime() {
+    let mut h = Harness::new();
+    // Inspect many different entities over a long session.
+    for _ in 0..30 {
+        h.keys("1j");
+        h.key(KeyCode::Enter);
+        h.sample();
+        h.keys("j");
+        h.key(KeyCode::Enter);
+        h.sample();
+        h.key(KeyCode::Esc);
+        h.key(KeyCode::Esc);
+        h.sample();
+    }
+    let after_session = h.s.history.len();
+    for _ in 0..30 {
+        h.sample();
+    }
+    // Not inspecting anything: only host, CPU, GPU, interface and disk
+    // series remain, and their number does not change with time.
+    assert_eq!(h.s.history.len(), after_session);
+    let hardware = 12 + 16 + 2 + 4 * 2 + 6 * 2;
+    assert!(
+        h.s.history.len() <= hardware,
+        "{} series",
+        h.s.history.len()
+    );
+}
