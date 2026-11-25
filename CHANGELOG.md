@@ -8,6 +8,25 @@ interfaces covered by semantic versioning are the command-line options, the
 
 ## [Unreleased]
 
+### Added
+
+- Disk health: NVMe SMART / Health log and ATA SMART via read-only ioctls,
+  with a per-drive verdict, wear, temperature and error counters in the
+  Storage view and as insights.
+- `make test/soak`: long-running UI soak that fails on memory growth or
+  rising CPU.
+
+### Fixed
+
+- Graph history grew with every inspected entity and slowed the event
+  loop over long sessions; it is now bounded by live entities.
+
+### Changed
+
+- Lower idle cost: cached sensor discovery, slow sensor inputs refreshed
+  every 10 s, duplicate thermal zones skipped, telemetry redraws at most
+  twice per second.
+
 ## [1.0.0] - 2026-11-24
 
 ### Added

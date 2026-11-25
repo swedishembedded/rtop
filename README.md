@@ -473,6 +473,7 @@ rtop --stats --strict > snapshot.yaml || echo "incomplete snapshot"
 | Processes | `/proc/PID/stat`, `status`, `io` | Identified by PID and start time; `io` is read only while a view needs it |
 | Block devices | `/proc/diskstats` | Throughput, IOPS, block-layer latency, queue depth |
 | Filesystems | mountinfo, `statvfs` | Remote mounts queried with a deadline |
+| Disk health | NVMe SMART / Health log, ATA SMART (read-only ioctls, once a minute) | Verdict from the drive's own state, wear, spare, temperature, media errors, reallocated/pending sectors, power-on hours |
 | Network | `/proc/net/dev`, `/proc/net/snmp` | Interface rates, errors, drops; TCP and UDP protocol counters |
 | Sockets | netlink `sock_diag`, `/proc/PID/fd` | Owners, Unix peers, `tcp_info` byte counters, RTT, retransmits |
 | Containers, services | cgroup v2 | CPU, throttling, memory, working-set estimate, PIDs, I/O |
@@ -496,6 +497,7 @@ rtop runs as an ordinary user and never asks for more.
 | I/O rates of other users' processes | Access to their `/proc/PID/io` | `N/A (perm)` |
 | Socket owners and descriptors of other users' processes | Access to their `/proc/PID/fd` | Sockets are listed without an owner |
 | Kernel-log security events | `CAP_SYSLOG` when `kernel.dmesg_restrict=1` | Kernel log source unavailable; other sources continue |
+| Disk health | Read access to `/dev/nvme*` and `/dev/sd*` (usually root) | Health shows `unknown`; the collector reports permission denied |
 | Per-rule firewall counters | `CAP_NET_ADMIN` to dump the nftables ruleset | The firewall source reports permission denied |
 | Docker names, images, volumes | Read access to the Docker socket (`DOCKER_HOST` or `/var/run/docker.sock`) | Containers still appear, from cgroups alone |
 | Signalling a process | The usual kernel permission to signal it | "permission denied" is reported |
@@ -543,6 +545,7 @@ make test/unit   # unit, property and UI snapshot tests
 make test/e2e    # CLI and PTY end-to-end tests
 make check/audit # RustSec advisory scan of Cargo.lock
 make test/performance  # release-build performance, scale and kill-latency budgets
+make test/soak   # drive the UI for SOAK_SECONDS; memory and CPU must stay flat
 make test/fuzz   # libFuzzer campaign over parsers and decoders (nightly + cargo-fuzz)
 make shots       # render every view from the demo machine into target/shots/
 ```
@@ -586,9 +589,10 @@ make release/major   # X.0.0
 make package/dist    # dist/rtop-<version>-<arch>-linux.tar.gz and its .sha256
 ```
 
-A release target runs `make check test`, bumps the version, dates the
-changelog, and creates the commit and the `vX.Y.Z` tag locally with
-`cargo-release`. Nothing is pushed automatically.
+A release target runs `make check test`, bumps the version with
+`bump2version` (`.bumpversion.cfg`), dates the changelog's Unreleased
+section, and creates the `chore: release vX.Y.Z` commit and the `vX.Y.Z` tag
+locally. Nothing is pushed automatically.
 
 Pushing the tag starts `.github/workflows/release.yml`. It verifies that the
 tag matches the workspace version and that `CHANGELOG.md` has a section for
