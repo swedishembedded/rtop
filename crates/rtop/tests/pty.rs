@@ -109,6 +109,18 @@ impl Tui {
         false
     }
 
+    /// Waits until `needle` is on screen row `row`.
+    fn wait_for_line(&self, needle: &str, row: u16, timeout: Duration) -> bool {
+        let end = Instant::now() + timeout;
+        while Instant::now() < end {
+            if line_of(self, needle) == Some(row) {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        false
+    }
+
     fn expect(&self, needle: &str) {
         assert!(
             self.wait_for(needle, Duration::from_secs(10)),
@@ -232,6 +244,38 @@ fn ux_search_filter_inspect_and_back() {
     t.expect("Deep inspection");
     t.send("\x1b");
     t.expect("filter: user:dbuser");
+    t.send(":q\r");
+    assert!(t.wait_exit(Duration::from_secs(5)).is_some());
+}
+
+/// Row of the first screen line containing `needle`.
+fn line_of(t: &Tui, needle: &str) -> Option<u16> {
+    t.text()
+        .lines()
+        .position(|l| l.contains(needle))
+        .map(|y| y as u16)
+}
+
+#[test]
+fn ux_drag_a_pane_border_with_the_mouse() {
+    let mut t = Tui::launch(&["--demo"], 160, 48);
+    t.expect("Memory");
+    t.send("4");
+    t.expect("Filesystems");
+    let border = line_of(&t, "Filesystems").expect("lower pane title");
+    // SGR mouse reports, 1-based: press, drag, release on the lower pane's
+    // top border.
+    let (x, y) = (40, border + 1);
+    let up = y - 6;
+    t.send(&format!(
+        "\x1b[<0;{x};{y}M\x1b[<32;{x};{}M\x1b[<32;{x};{up}M\x1b[<0;{x};{up}m",
+        y - 3
+    ));
+    assert!(
+        t.wait_for_line("Filesystems", border - 6, Duration::from_secs(5)),
+        "border did not follow the mouse:\n{}",
+        t.text()
+    );
     t.send(":q\r");
     assert!(t.wait_exit(Duration::from_secs(5)).is_some());
 }

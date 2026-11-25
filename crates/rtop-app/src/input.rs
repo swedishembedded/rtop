@@ -4,7 +4,7 @@
 
 //! Terminal-independent input events.
 
-use crate::view::{Panel, RowId, SortKey, View};
+use crate::view::{Panel, RowId, SortKey, SplitId, View};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KeyCode {
@@ -88,4 +88,12 @@ pub enum MouseAction {
     },
     /// Click outside any modal: closes it.
     Dismiss,
+    /// A pane border was dragged: the boundary now sits at `permille`
+    /// thousandths of the layout it divides.
+    Resize {
+        split: SplitId,
+        permille: u16,
+    },
+    /// Double click on a pane border: back to the layout's own proportions.
+    ResetSplit(SplitId),
 }

@@ -34,4 +34,4 @@ pub use input::{Hit, Key, KeyCode, MouseAction};
 pub use keymap::{BINDINGS, Binding, Cmd};
 pub use reducer::{Effect, Event, reduce};
 pub use state::{AppState, Modal, Mode};
-pub use view::{Panel, RowId, SortKey, View};
+pub use view::{Panel, RowId, SortKey, SplitId, View};

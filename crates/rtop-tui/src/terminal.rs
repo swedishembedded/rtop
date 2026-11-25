@@ -29,7 +29,7 @@ use ratatui::crossterm::{cursor, execute, terminal as ct};
 use rtop_app::input::{Key, KeyCode};
 use rtop_app::{Hit, MouseAction};
 
-use crate::hits::HitMap;
+use crate::hits::{HitMap, Splitter};
 
 /// Raw input delivered by the input thread.
 #[derive(Debug, Clone)]
@@ -113,6 +113,30 @@ pub fn spawn_input(stop: Arc<AtomicBool>) -> Receiver<Input> {
 #[derive(Debug, Default)]
 pub struct MouseTracker {
     last_click: Option<(Instant, Hit)>,
+    /// Last press on a pane border, for double-click reset.
+    last_border: Option<(Instant, rtop_app::SplitId)>,
+    drag: Option<BorderDrag>,
+}
+
+/// A press on a pane border that becomes a resize once the pointer moves.
+#[derive(Debug, Clone, Copy)]
+struct BorderDrag {
+    splitter: Splitter,
+    /// Boundary minus the pressed coordinate, so the border line that was
+    /// grabbed stays under the pointer.
+    grab: i32,
+    moved: bool,
+}
+
+impl BorderDrag {
+    fn resize(&mut self, x: u16, y: u16) -> MouseAction {
+        self.moved = true;
+        let boundary = i32::from(self.splitter.along(x, y)) + self.grab;
+        MouseAction::Resize {
+            split: self.splitter.id,
+            permille: self.splitter.permille(boundary),
+        }
+    }
 }
 
 impl MouseTracker {
@@ -123,6 +147,33 @@ impl MouseTracker {
             return Some(MouseAction::Dismiss);
         }
         match m.kind {
+            MouseEventKind::Down(MouseButton::Left) if m.modifiers.is_empty() => {
+                // A press on a border still clicks what is there (a panel's
+                // title line focuses it); moving before release resizes.
+                self.drag = None;
+                if let Some(sp) = hits.splitter_at(x, y).copied() {
+                    let double = self.last_border.is_some_and(|(t, id)| {
+                        id == sp.id && now.duration_since(t) < Duration::from_millis(400)
+                    });
+                    if double {
+                        self.last_border = None;
+                        self.last_click = None;
+                        return Some(MouseAction::ResetSplit(sp.id));
+                    }
+                    self.last_border = Some((now, sp.id));
+                    self.drag = Some(BorderDrag {
+                        splitter: sp,
+                        grab: i32::from(sp.boundary) - i32::from(sp.along(x, y)),
+                        moved: false,
+                    });
+                }
+                self.click(hits, x, y, now)
+            }
+            MouseEventKind::Drag(MouseButton::Left) => self.drag.as_mut().map(|d| d.resize(x, y)),
+            MouseEventKind::Up(MouseButton::Left) => {
+                let mut d = self.drag.take()?;
+                d.moved.then(|| d.resize(x, y))
+            }
             MouseEventKind::Down(MouseButton::Left) => {
                 let hit = hits.at(x, y)?.clone();
                 if m.modifiers.contains(KeyModifiers::CONTROL) {
@@ -131,16 +182,7 @@ impl MouseTracker {
                 if m.modifiers.contains(KeyModifiers::SHIFT) {
                     return Some(MouseAction::RangeClick(hit));
                 }
-                let double = self.last_click.as_ref().is_some_and(|(t, h)| {
-                    *h == hit && now.duration_since(*t) < Duration::from_millis(400)
-                });
-                if double {
-                    self.last_click = None;
-                    Some(MouseAction::DoubleClick(hit))
-                } else {
-                    self.last_click = Some((now, hit.clone()));
-                    Some(MouseAction::Click(hit))
-                }
+                self.click(hits, x, y, now)
             }
             MouseEventKind::Down(MouseButton::Right) => Some(MouseAction::RightClick {
                 hit: hits.at(x, y)?.clone(),
@@ -156,6 +198,22 @@ impl MouseTracker {
                 lines: -3,
             }),
             _ => None,
+        }
+    }
+
+    /// A plain left click on whatever is under the pointer.
+    fn click(&mut self, hits: &HitMap, x: u16, y: u16, now: Instant) -> Option<MouseAction> {
+        let hit = hits.at(x, y)?.clone();
+        let double = self
+            .last_click
+            .as_ref()
+            .is_some_and(|(t, h)| *h == hit && now.duration_since(*t) < Duration::from_millis(400));
+        if double {
+            self.last_click = None;
+            Some(MouseAction::DoubleClick(hit))
+        } else {
+            self.last_click = Some((now, hit.clone()));
+            Some(MouseAction::Click(hit))
         }
     }
 }

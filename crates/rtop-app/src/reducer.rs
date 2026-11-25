@@ -1294,6 +1294,13 @@ fn mouse(s: &mut AppState, g: &SystemGraph, m: MouseAction, fx: &mut Vec<Effect>
         return;
     }
     match m {
+        MouseAction::Resize { split, permille } => {
+            s.splits.insert(split, permille.min(1000));
+            s.dirty = true;
+        }
+        MouseAction::ResetSplit(split) => {
+            s.dirty |= s.splits.remove(&split).is_some();
+        }
         MouseAction::Click(Hit::Tab(v)) => switch_view(s, g, v, fx),
         MouseAction::Click(Hit::Back) => {
             back(s, g, fx);

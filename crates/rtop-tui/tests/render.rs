@@ -263,3 +263,178 @@ fn every_cpu_is_visible_without_scrolling_at_common_sizes() {
         }
     }
 }
+
+// ----- draggable pane borders ----------------------------------------------
+
+use ratatui::crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::layout::Rect;
+use rtop_app::{MouseAction, Panel, View};
+use rtop_tui::terminal::MouseTracker;
+
+fn mouse(kind: MouseEventKind, x: u16, y: u16) -> MouseEvent {
+    MouseEvent {
+        kind,
+        column: x,
+        row: y,
+        modifiers: KeyModifiers::NONE,
+    }
+}
+
+impl World {
+    /// Feeds raw mouse events through the tracker and the reducer, redrawing
+    /// after each one as the event loop does.
+    fn mouse(&mut self, size: (u16, u16), events: &[MouseEvent]) -> HitMap {
+        let mut tracker = MouseTracker::default();
+        let (_, mut hits) = self.draw(size.0, size.1);
+        let mut now = std::time::Instant::now();
+        for e in events {
+            // Far enough apart that two presses are not a double click.
+            now += std::time::Duration::from_secs(1);
+            if let Some(a) = tracker.translate(*e, &hits, now) {
+                self.ev(Event::Mouse(a));
+            }
+            hits = self.draw(size.0, size.1).1;
+        }
+        hits
+    }
+
+    fn drag(&mut self, size: (u16, u16), from: (u16, u16), to: (u16, u16)) -> HitMap {
+        self.mouse(
+            size,
+            &[
+                mouse(MouseEventKind::Down(MouseButton::Left), from.0, from.1),
+                mouse(MouseEventKind::Drag(MouseButton::Left), to.0, to.1),
+                mouse(MouseEventKind::Up(MouseButton::Left), to.0, to.1),
+            ],
+        )
+    }
+}
+
+fn rect(hits: &HitMap, p: Panel) -> Rect {
+    hits.panel_rect(p)
+        .unwrap_or_else(|| panic!("{p:?} not drawn"))
+}
+
+/// The border between two stacked panes follows the mouse, keeps its
+/// proportion when the terminal is resized, never squeezes a pane below a
+/// usable size, and a double click restores the default layout.
+#[test]
+fn dragging_a_border_resizes_the_adjacent_panes() {
+    let mut w = world();
+    w.keys("4");
+    let size = (120, 40);
+    let (_, hits) = w.draw(size.0, size.1);
+    let (top, bottom) = (rect(&hits, Panel::BlockDevices), rect(&hits, Panel::Mounts));
+    assert_eq!(top.y + top.height, bottom.y, "adjacent panes");
+    let default_top = top;
+
+    // A plain click on the border focuses the pane below, as before, and
+    // moves nothing.
+    let hits = w.mouse(
+        size,
+        &[
+            mouse(MouseEventKind::Down(MouseButton::Left), 30, bottom.y),
+            mouse(MouseEventKind::Up(MouseButton::Left), 30, bottom.y),
+        ],
+    );
+    assert_eq!(rect(&hits, Panel::BlockDevices), default_top);
+    assert_eq!(w.s.location.focus, 1);
+
+    // Dragging the border (either of its two lines) moves it to the mouse.
+    let hits = w.drag(size, (30, bottom.y), (30, bottom.y - 4));
+    let (top, bottom) = (rect(&hits, Panel::BlockDevices), rect(&hits, Panel::Mounts));
+    assert_eq!(top.height, default_top.height - 4);
+    assert_eq!(top.y + top.height, bottom.y);
+    assert_eq!(
+        bottom.y + bottom.height,
+        39,
+        "the pair still fills the view"
+    );
+    // Whichever of the two border lines is grabbed stays under the pointer:
+    // here the upper pane's bottom edge.
+    let hits = w.drag(size, (30, bottom.y - 1), (30, bottom.y + 6));
+    let top = rect(&hits, Panel::BlockDevices);
+    assert_eq!(top.y + top.height - 1, bottom.y + 6);
+
+    // The boundary is stored relative to the view, so it scales with it.
+    let moved = rect(&hits, Panel::Mounts).y;
+    let (_, big) = w.draw(120, 80);
+    let scaled = rect(&big, Panel::Mounts).y;
+    let expect = f64::from(moved) * 80.0 / 40.0;
+    assert!(
+        (f64::from(scaled) - expect).abs() <= 3.0,
+        "{scaled} vs {expect}"
+    );
+
+    // Dragging past the edge leaves both panes usable.
+    let b = rect(&hits, Panel::Mounts).y;
+    let hits = w.drag(size, (30, b), (30, 0));
+    assert!(rect(&hits, Panel::BlockDevices).height >= 3);
+    let b = rect(&hits, Panel::Mounts).y;
+    let hits = w.drag(size, (30, b), (30, 39));
+    assert!(rect(&hits, Panel::Mounts).height >= 3);
+
+    // Double click on the border: back to the default.
+    let b = rect(&hits, Panel::Mounts).y;
+    let down = mouse(MouseEventKind::Down(MouseButton::Left), 30, b);
+    let up = mouse(MouseEventKind::Up(MouseButton::Left), 30, b);
+    let mut tracker = MouseTracker::default();
+    let now = std::time::Instant::now();
+    let mut actions = Vec::new();
+    for (i, e) in [down, up, down, up].into_iter().enumerate() {
+        let t = now + std::time::Duration::from_millis(50 * i as u64);
+        actions.extend(tracker.translate(e, &hits, t));
+    }
+    assert!(
+        actions
+            .iter()
+            .any(|a| matches!(a, MouseAction::ResetSplit(_))),
+        "{actions:?}"
+    );
+    for a in actions {
+        w.ev(Event::Mouse(a));
+    }
+    let (_, hits) = w.draw(size.0, size.1);
+    assert_eq!(rect(&hits, Panel::BlockDevices), default_top);
+}
+
+/// Every border of every view can be dragged to both extremes without a pane
+/// leaving the screen, overlapping another, or becoming too small to show
+/// its frame and one line.
+#[test]
+fn every_border_of_every_view_stays_usable_at_its_extremes() {
+    for size in [(80, 24), (200, 60)] {
+        for (digit, view) in (b'0'..).zip(View::ALL) {
+            let mut w = world();
+            w.ev(Event::Key(Key::ch(char::from(digit))));
+            let (_, hits) = w.draw(size.0, size.1);
+            let splitters: Vec<_> = hits.splitters().copied().collect();
+            for sp in splitters {
+                for target in [0, u16::MAX] {
+                    let (from, to) = match sp.axis {
+                        rtop_tui::hits::Axis::Vertical => (
+                            (sp.line.x + 1, sp.line.y),
+                            (sp.line.x + 1, target.min(size.1 - 1)),
+                        ),
+                        rtop_tui::hits::Axis::Horizontal => (
+                            (sp.line.x, sp.line.y + 1),
+                            (target.min(size.0 - 1), sp.line.y + 1),
+                        ),
+                    };
+                    let hits = w.drag(size, from, to);
+                    let panes: Vec<Rect> = hits.panel_rects().collect();
+                    for (i, a) in panes.iter().enumerate() {
+                        assert!(
+                            a.width >= 3 && a.height >= 3,
+                            "{view:?} {size:?}: pane {a:?} too small"
+                        );
+                        assert!(a.x + a.width <= size.0 && a.y + a.height <= size.1);
+                        for b in &panes[i + 1..] {
+                            assert!(!a.intersects(*b), "{view:?} {size:?}: {a:?} overlaps {b:?}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

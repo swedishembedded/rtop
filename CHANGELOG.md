@@ -8,6 +8,11 @@ interfaces covered by semantic versioning are the command-line options, the
 
 ## [Unreleased]
 
+### Added
+
+- Pane borders can be dragged with the mouse to resize the panes on both
+  sides; a double click restores the view's own proportions.
+
 ## [1.1.0] - 2026-11-25
 
 ### Added

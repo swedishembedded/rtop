@@ -16,7 +16,7 @@ use rtop_core::{EntityId, ProcessIdentity, Timestamp};
 use crate::filter::Filter;
 use crate::input::Key;
 use crate::project::Rows;
-use crate::view::{Panel, RowId, SortKey, View};
+use crate::view::{Panel, RowId, SortKey, SplitId, View};
 
 /// Per-table navigation state.
 #[derive(Debug, Clone)]
@@ -231,6 +231,10 @@ pub struct AppState {
     pub prompt_error: Option<String>,
     /// When graph history was last sampled.
     pub last_history: Option<Timestamp>,
+    /// Pane borders the user dragged, in thousandths of the layout they
+    /// divide; relative, so they survive terminal resizes. A layout without
+    /// an entry uses its own proportions.
+    pub splits: std::collections::BTreeMap<SplitId, u16>,
 }
 
 impl AppState {
@@ -266,6 +270,7 @@ impl AppState {
             subscriptions: (false, false, false),
             prompt_error: None,
             last_history: None,
+            splits: std::collections::BTreeMap::new(),
         }
     }
 

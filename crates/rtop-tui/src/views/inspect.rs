@@ -11,14 +11,15 @@ use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
+use rtop_app::SplitId;
 use rtop_app::state::Detail;
 use rtop_collectors::metrics::{Unit, describe, unit_of};
 use rtop_core::units::format_bytes;
 use rtop_core::{Attr, EntityKind};
 
-use super::{Ctx, cols, panel_table, rows};
+use super::{Ctx, cols, panel_table, resizable};
 use crate::fmt::{self, Fmt};
-use crate::hits::HitMap;
+use crate::hits::{Axis, HitMap};
 use crate::theme;
 use crate::widgets::{framed, panel};
 
@@ -91,12 +92,16 @@ pub fn render(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
         }
     }
     let head_h = head.len() as u16 + 2;
-    let r = rows(
+    let r = resizable(
+        Axis::Vertical,
         area,
         [
             Constraint::Length(head_h.min(area.height / 3)),
             Constraint::Min(4),
         ],
+        &[SplitId("inspect.head")],
+        c.s,
+        hits,
     );
     let inner = framed(
         f,
@@ -111,19 +116,34 @@ pub fn render(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
     let is_process = id.kind() == Some(EntityKind::Process);
     let wide = area.width >= 110;
     let body = if is_process && r[1].height >= 16 {
-        rows(r[1], [Constraint::Percentage(55), Constraint::Min(6)])
+        resizable(
+            Axis::Vertical,
+            r[1],
+            [Constraint::Percentage(55), Constraint::Min(6)],
+            &[SplitId("inspect.deep")],
+            c.s,
+            hits,
+        )
     } else {
         vec![r[1]]
     };
     let top = if wide {
-        cols(
+        resizable(
+            Axis::Horizontal,
             body[0],
             [Constraint::Percentage(42), Constraint::Percentage(58)],
+            &[SplitId("inspect.columns")],
+            c.s,
+            hits,
         )
     } else {
-        rows(
+        resizable(
+            Axis::Vertical,
             body[0],
             [Constraint::Percentage(50), Constraint::Percentage(50)],
+            &[SplitId("inspect.rows")],
+            c.s,
+            hits,
         )
     };
 

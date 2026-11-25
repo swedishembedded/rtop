@@ -322,6 +322,9 @@ fn micro(
         );
         for (k, rid) in rows.ids.iter().enumerate().skip(first).take(per_row) {
             let x = inner.x + g.label_width + ((k - first) as u16) * MICRO_W;
+            if x >= inner.x + inner.width {
+                break;
+            }
             let pct = rid
                 .entity()
                 .and_then(|id| c.g.node(id))

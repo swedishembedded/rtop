@@ -311,7 +311,7 @@ fn help(f: &mut Frame, area: Rect, scroll: usize, hits: &mut HitMap) {
     );
     let mut lines = vec![
         Line::from(Span::styled(
-            "Every command is also reachable with the mouse: click tabs, rows and headers; double-click to inspect; right-click for actions.",
+            "Every command is also reachable with the mouse: click tabs, rows and headers; double-click to inspect; right-click for actions; drag a border between panes to resize them.",
             theme::dim(),
         )),
         Line::from(Span::styled(

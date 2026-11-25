@@ -334,8 +334,11 @@ Numeric keys: `cpu`, `rss` (`mem`), `virt`, `swap`, `threads`, `io`, `net`,
 | Click a column header | Sort by that column |
 | Wheel | Scroll |
 | Click outside a dialog | Close it |
+| Drag a border between panes | Resize the panes on both sides |
+| Double click a border | Restore the view's own proportions |
 
-Mouse input produces the same commands as the keyboard. Start with
+Resized panes keep their proportions when the terminal is resized. Apart
+from resizing, mouse input produces the same commands as the keyboard. Start with
 `--no-mouse` to leave the mouse to the terminal.
 
 ## `rtop --stats`

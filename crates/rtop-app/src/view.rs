@@ -261,3 +261,10 @@ impl RowId {
         }
     }
 }
+
+/// One resizable boundary between two adjacent panes, named by the layout
+/// that draws it (for example `"storage.tables"`). Layouts that differ by
+/// terminal size use different names, so a boundary dragged in one never
+/// lands in the other's geometry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct SplitId(pub &'static str);

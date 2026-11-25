@@ -16,12 +16,12 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 use rtop_app::insight::insights;
 use rtop_app::view::View;
-use rtop_app::{AppState, Hit};
+use rtop_app::{AppState, Hit, SplitId};
 use rtop_core::units::{format_bytes, format_rate};
 use rtop_core::{EntityId, EntityKind, Node, Severity, SystemGraph};
 
 use crate::fmt::{self, Fmt};
-use crate::hits::HitMap;
+use crate::hits::{Axis, HitMap, Splitter, boundary_at};
 use crate::theme;
 use crate::widgets::{self, framed, kv_line, panel, table};
 
@@ -100,6 +100,93 @@ pub fn rows(area: Rect, c: impl IntoIterator<Item = Constraint>) -> Vec<Rect> {
 
 pub fn cols(area: Rect, c: impl IntoIterator<Item = Constraint>) -> Vec<Rect> {
     split(Direction::Horizontal, area, c)
+}
+
+/// Smallest pane a dragged border may leave: its frame and one line.
+const MIN_PANE: u16 = 3;
+
+/// Splits `area` like [`split`], then moves every boundary the user dragged
+/// (`ids[i]` names the boundary between pane `i` and `i + 1`) and registers
+/// each boundary between two non-empty panes as a draggable border.
+///
+/// Without a dragged boundary the result is exactly the layout's own. A
+/// dragged boundary never shrinks a pane below `MIN_PANE` (or below its
+/// default, when that is smaller), and empty panes stay empty.
+pub fn resizable(
+    axis: Axis,
+    area: Rect,
+    constraints: impl IntoIterator<Item = Constraint>,
+    ids: &[SplitId],
+    s: &AppState,
+    hits: &mut HitMap,
+) -> Vec<Rect> {
+    let dir = match axis {
+        Axis::Vertical => Direction::Vertical,
+        Axis::Horizontal => Direction::Horizontal,
+    };
+    let rects = split(dir, area, constraints);
+    debug_assert_eq!(ids.len() + 1, rects.len(), "one id per boundary");
+    let (start, len) = match axis {
+        Axis::Vertical => (area.y, area.height),
+        Axis::Horizontal => (area.x, area.width),
+    };
+    let pos = |r: Rect| match axis {
+        Axis::Vertical => r.y,
+        Axis::Horizontal => r.x,
+    };
+    let size = |r: Rect| match axis {
+        Axis::Vertical => r.height,
+        Axis::Horizontal => r.width,
+    };
+    let end = start + len;
+    let n = rects.len();
+    let min: Vec<u16> = rects.iter().map(|r| size(*r).min(MIN_PANE)).collect();
+    let draggable = |i: usize| size(rects[i]) > 0 && size(rects[i + 1]) > 0;
+    // b[i]: where pane i + 1 starts.
+    let mut b: Vec<u16> = rects[1..].iter().map(|r| pos(*r)).collect();
+    for (i, id) in ids.iter().enumerate().take(n - 1) {
+        if let Some(p) = s.splits.get(id).filter(|_| draggable(i)) {
+            b[i] = boundary_at(start, len, *p);
+        }
+    }
+    // Keep every pane at its minimum: forward from the start, then back
+    // from the end (the defaults satisfy both, so this always succeeds).
+    for i in 0..b.len() {
+        let lo = if i == 0 { start } else { b[i - 1] } + min[i];
+        b[i] = b[i].max(lo);
+    }
+    for i in (0..b.len()).rev() {
+        let hi = if i + 1 == b.len() { end } else { b[i + 1] }.saturating_sub(min[i + 1]);
+        b[i] = b[i].min(hi);
+    }
+    let out: Vec<Rect> = (0..n)
+        .map(|i| {
+            let a = if i == 0 { start } else { b[i - 1] };
+            let z = if i + 1 == n { end } else { b[i] };
+            match axis {
+                Axis::Vertical => Rect::new(area.x, a, area.width, z - a),
+                Axis::Horizontal => Rect::new(a, area.y, z - a, area.height),
+            }
+        })
+        .collect();
+    for (i, id) in ids.iter().enumerate().take(n - 1) {
+        if !draggable(i) {
+            continue;
+        }
+        let line = match axis {
+            Axis::Vertical => Rect::new(area.x, b[i] - 1, area.width, 2),
+            Axis::Horizontal => Rect::new(b[i] - 1, area.y, 2, area.height),
+        };
+        hits.splitter(Splitter {
+            id: *id,
+            axis,
+            line,
+            boundary: b[i],
+            start,
+            len,
+        });
+    }
+    out
 }
 
 // ----- overview cards -----------------------------------------------------
@@ -552,9 +639,13 @@ pub fn overview(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
     }
     let bottom = r[next];
     if side {
-        let parts = cols(
+        let parts = resizable(
+            Axis::Horizontal,
             bottom,
             [Constraint::Percentage(64), Constraint::Percentage(36)],
+            &[SplitId("overview.insights")],
+            c.s,
+            hits,
         );
         panel_table(f, parts[0], c, 0, hits);
         let inner = framed(
@@ -689,9 +780,23 @@ pub fn cpu(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
     let top_h = (grid_rows + 2)
         .max(if wide { 10 } else { 3 })
         .min(area.height.saturating_sub(4).max(3));
-    let r = rows(area, [Constraint::Length(top_h), Constraint::Min(4)]);
+    let r = resizable(
+        Axis::Vertical,
+        area,
+        [Constraint::Length(top_h), Constraint::Min(4)],
+        &[SplitId("cpu.grid")],
+        c.s,
+        hits,
+    );
     let top = if wide {
-        cols(r[0], [Constraint::Min(20), Constraint::Length(SIDE_W)])
+        resizable(
+            Axis::Horizontal,
+            r[0],
+            [Constraint::Min(20), Constraint::Length(SIDE_W)],
+            &[SplitId("cpu.scheduler")],
+            c.s,
+            hits,
+        )
     } else {
         vec![r[0]]
     };
@@ -831,7 +936,14 @@ pub fn memory(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
             .any(|s| s.content.contains("wap") || s.content.contains("memory"))
     }));
     let top_h = (lines.len() as u16 + 2).min(area.height / 2).max(5);
-    let r = rows(area, [Constraint::Length(top_h), Constraint::Min(4)]);
+    let r = resizable(
+        Axis::Vertical,
+        area,
+        [Constraint::Length(top_h), Constraint::Min(4)],
+        &[SplitId("memory.summary")],
+        c.s,
+        hits,
+    );
     summary_block(
         f,
         r[0],
@@ -869,18 +981,22 @@ pub fn two_tables(
     hits: &mut HitMap,
     first_pct: u16,
     summary: Option<Summary<'_>>,
+    [summary_id, tables_id]: [SplitId; 2],
 ) {
     let mut cons = Vec::new();
+    let mut ids = Vec::new();
     let sum_h = summary
         .as_ref()
         .map_or(0, |(_, l, _)| (l.len() as u16 + 2).max(5))
         .min(area.height / 3);
     if summary.is_some() && area.height >= 24 {
         cons.push(Constraint::Length(sum_h));
+        ids.push(summary_id);
     }
     cons.push(Constraint::Percentage(first_pct));
     cons.push(Constraint::Min(4));
-    let r = rows(area, cons);
+    ids.push(tables_id);
+    let r = resizable(Axis::Vertical, area, cons, &ids, c.s, hits);
     let mut i = 0;
     if let Some((title, lines, graphs)) = summary
         && area.height >= 24
@@ -932,6 +1048,7 @@ pub fn storage(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
                 ),
             ],
         )),
+        [SplitId("storage.summary"), SplitId("storage.tables")],
     );
 }
 
@@ -964,13 +1081,25 @@ pub fn network(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
         ]),
     ];
     let sum_h = if area.height >= 26 { 5 } else { 0 };
-    let r = rows(
+    let wide = area.width >= 140;
+    let r = resizable(
+        Axis::Vertical,
         area,
         [
             Constraint::Length(sum_h),
             Constraint::Percentage(55),
             Constraint::Min(4),
         ],
+        &[
+            SplitId("network.summary"),
+            SplitId(if wide {
+                "network.wide.tables"
+            } else {
+                "network.narrow.tables"
+            }),
+        ],
+        c.s,
+        hits,
     );
     if sum_h > 0 {
         summary_block(
@@ -994,18 +1123,26 @@ pub fn network(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
             ],
         );
     }
-    if area.width >= 140 {
-        let mid = cols(
+    if wide {
+        let mid = resizable(
+            Axis::Horizontal,
             r[1],
             [Constraint::Percentage(50), Constraint::Percentage(50)],
+            &[SplitId("network.wide.columns")],
+            c.s,
+            hits,
         );
         panel_table(f, mid[0], c, 0, hits);
         panel_table(f, mid[1], c, 1, hits);
     } else {
         panel_table(f, r[1], c, 0, hits);
-        let low = rows(
+        let low = resizable(
+            Axis::Vertical,
             r[2],
             [Constraint::Percentage(50), Constraint::Percentage(50)],
+            &[SplitId("network.narrow.lower")],
+            c.s,
+            hits,
         );
         panel_table(f, low[0], c, 1, hits);
         panel_table(f, low[1], c, 2, hits);
@@ -1066,7 +1203,8 @@ pub fn security(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
         )),
     ];
     let sum_h = if area.height >= 28 { 7 } else { 0 };
-    let r = rows(
+    let r = resizable(
+        Axis::Vertical,
         area,
         [
             Constraint::Length(sum_h),
@@ -1074,6 +1212,13 @@ pub fn security(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
             Constraint::Percentage(30),
             Constraint::Min(4),
         ],
+        &[
+            SplitId("security.summary"),
+            SplitId("security.events"),
+            SplitId("security.firewall"),
+        ],
+        c.s,
+        hits,
     );
     if sum_h > 0 {
         summary_block(f, r[0], "Security & telemetry health", lines, Vec::new());
@@ -1083,8 +1228,16 @@ pub fn security(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
     panel_table(f, r[3], c, 2, hits);
 }
 
-pub fn generic(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap, first_pct: u16) {
-    two_tables(f, area, c, hits, first_pct, None);
+pub fn generic(
+    f: &mut Frame,
+    area: Rect,
+    c: &Ctx<'_>,
+    hits: &mut HitMap,
+    first_pct: u16,
+    tables: SplitId,
+) {
+    // No summary, so its boundary id is never registered.
+    two_tables(f, area, c, hits, first_pct, None, [tables, tables]);
 }
 
 pub fn body(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
@@ -1098,9 +1251,9 @@ pub fn body(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
         View::Memory => memory(f, area, c, hits),
         View::Storage => storage(f, area, c, hits),
         View::Network => network(f, area, c, hits),
-        View::Containers => generic(f, area, c, hits, 60),
-        View::Gpu => generic(f, area, c, hits, 45),
+        View::Containers => generic(f, area, c, hits, 60, SplitId("containers.tables")),
+        View::Gpu => generic(f, area, c, hits, 45, SplitId("gpu.tables")),
         View::Security => security(f, area, c, hits),
-        View::Sensors => generic(f, area, c, hits, 60),
+        View::Sensors => generic(f, area, c, hits, 60, SplitId("sensors.tables")),
     }
 }
