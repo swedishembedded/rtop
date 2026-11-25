@@ -8,6 +8,8 @@ interfaces covered by semantic versioning are the command-line options, the
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-25
+
 ### Added
 
 - Disk health: NVMe SMART / Health log and ATA SMART via read-only ioctls,
