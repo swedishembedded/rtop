@@ -152,6 +152,10 @@ pub fn run(mut session: Session) -> std::io::Result<()> {
     let mut last_frame = Instant::now() - FRAME;
     let mut graph_dirty = false;
     let mut urgent = true;
+    // The live heap is flat (see tests/leak.rs), but glibc keeps freed
+    // pages of its per-thread arenas, so resident memory would creep up to
+    // the allocator's high-water mark. Return them periodically.
+    let mut last_trim = Instant::now();
 
     let result = loop {
         for (id, st) in rt.dispatch() {
@@ -227,6 +231,10 @@ pub fn run(mut session: Session) -> std::io::Result<()> {
                 default(timeout) => events.push(Event::Tick),
             }
         }
+        if last_trim.elapsed() >= Duration::from_secs(60) {
+            last_trim = Instant::now();
+            release_free_memory();
+        }
         let mut quit = false;
         let mut fatal = None;
         for ev in events {
@@ -293,6 +301,15 @@ pub fn run(mut session: Session) -> std::io::Result<()> {
     stop.store(true, Ordering::Relaxed);
     drop(term);
     result
+}
+
+/// Returns free heap pages to the operating system (glibc only).
+fn release_free_memory() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    // SAFETY: malloc_trim has no preconditions.
+    unsafe {
+        libc::malloc_trim(0);
+    }
 }
 
 fn input_event(

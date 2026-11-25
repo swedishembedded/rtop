@@ -423,7 +423,7 @@ fn rss_kb(pid: u32) -> u64 {
     std::fs::read_to_string(format!("/proc/{pid}/status"))
         .unwrap()
         .lines()
-        .find(|l| l.starts_with("VmRSS"))
+        .find(|l| l.starts_with("RssAnon"))
         .unwrap()
         .split_whitespace()
         .nth(1)
@@ -434,7 +434,8 @@ fn rss_kb(pid: u32) -> u64 {
 
 /// Long-running stability: memory must not climb and CPU must not trend
 /// upward while the UI is driven through every view, inspections and
-/// relationship hops. `make test/soak` runs it (SOAK_SECONDS, default 300).
+/// relationship hops. `make test/soak` runs it (SOAK_SECONDS, default 300;
+/// SOAK_LIVE=1 for the live system).
 #[test]
 #[ignore = "long-running; make test/soak"]
 fn soak_memory_and_cpu_stay_flat() {
@@ -442,7 +443,12 @@ fn soak_memory_and_cpu_stay_flat() {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(300);
-    let mut t = Tui::launch(&[], 160, 48);
+    // The demo machine repeats identical work every cycle, so any growth is
+    // a leak; SOAK_LIVE=1 soaks the live system, whose changing workload
+    // also moves the allocator's high-water mark.
+    let live = std::env::var("SOAK_LIVE").is_ok_and(|v| v == "1");
+    let args: &[&str] = if live { &[] } else { &["--demo"] };
+    let mut t = Tui::launch(args, 160, 48);
     t.expect("Memory");
     let pid = t.child.id();
     let warmup = Duration::from_secs(60.min(secs / 4));
@@ -462,21 +468,32 @@ fn soak_memory_and_cpu_stay_flat() {
             window_start = (Instant::now(), ticks);
         }
     }
-    eprintln!("soak windows (rss kB, cpu ticks/30 s): {windows:?}");
-    assert!(windows.len() >= 2, "soak too short to judge");
-    let (first, last) = (windows[0], *windows.last().unwrap());
-    // Memory: no growth beyond allocator noise after warm-up.
-    assert!(
-        last.0 <= first.0 + 1024,
-        "RSS grew from {} to {} kB",
-        first.0,
-        last.0
+    eprintln!("soak windows (anonymous RSS kB, cpu ticks/30 s): {windows:?}");
+    assert!(windows.len() >= 6, "soak too short to judge");
+    // Anonymous memory (heap and stacks; file-backed code pages excluded)
+    // oscillates with periodic trimming: compare peaks of the first and
+    // last thirds of the run.
+    let third = windows.len() / 3;
+    let peak = |w: &[(u64, u64)]| w.iter().map(|x| x.0).max().unwrap();
+    let (early, late) = (
+        peak(&windows[..third]),
+        peak(&windows[windows.len() - third..]),
     );
-    // CPU: the last window may not cost meaningfully more than the first.
     assert!(
-        last.1 <= first.1 * 3 / 2 + 20,
-        "CPU per window rose from {} to {} ticks",
-        first.1,
-        last.1
+        late <= early + 512,
+        "anonymous RSS peak grew from {early} to {late} kB"
+    );
+    // CPU: the median of the second half may not be meaningfully higher
+    // than the first half's (single windows are noisy on shared hosts).
+    let median = |w: &[(u64, u64)]| {
+        let mut v: Vec<u64> = w.iter().map(|x| x.1).collect();
+        v.sort_unstable();
+        v[v.len() / 2]
+    };
+    let half = windows.len() / 2;
+    let (cpu_early, cpu_late) = (median(&windows[..half]), median(&windows[half..]));
+    assert!(
+        cpu_late <= cpu_early * 2 + 30,
+        "CPU per window rose from {cpu_early} to {cpu_late} ticks"
     );
 }

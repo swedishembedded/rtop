@@ -15,6 +15,7 @@ name = "rtop"
 path = "src/main.rs"
 
 [dependencies]
+libc.workspace = true
 rtop-core.workspace = true
 rtop-linux.workspace = true
 rtop-collectors.workspace = true
