@@ -146,8 +146,9 @@ pub fn run(mut session: Session) -> std::io::Result<()> {
     );
 
     // Telemetry changes are coalesced into at most one table refresh and
-    // frame per FRAME; input renders immediately.
-    const FRAME: Duration = Duration::from_millis(250);
+    // frame per FRAME (collectors sample at most once a second); input
+    // renders immediately.
+    const FRAME: Duration = Duration::from_millis(500);
     let mut last_frame = Instant::now() - FRAME;
     let mut graph_dirty = false;
     let mut urgent = true;

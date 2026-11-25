@@ -22,12 +22,109 @@ use rtop_linux::fs::{KernelFs, KernelFsExt};
 use crate::{Collector, CollectorError, Descriptor, Env, Isolation, Sample, SampleContext};
 
 pub const ID: CollectorId = CollectorId("sensors");
+/// Passes between rediscoveries of hwmon chips and their static attributes.
+const DISCOVERY_REFRESH: u32 = 30;
+
+/// Static description of one hwmon input.
+#[derive(Debug, Clone)]
+struct SensorSpec {
+    id: EntityId,
+    input: String,
+    alarm: Option<String>,
+    chip_key: String,
+    label: String,
+    kind: &'static str,
+    unit: &'static str,
+    scale: f64,
+    max: Option<f64>,
+    crit: Option<f64>,
+    min: Option<f64>,
+    /// Last read took over SLOW_READ (an NVMe admin command, an embedded
+    /// controller transaction): refresh only every SLOW_EVERY passes.
+    slow: bool,
+    last: Option<Result<f64, Unavailable>>,
+}
+
+const SLOW_READ: std::time::Duration = std::time::Duration::from_millis(1);
+const SLOW_EVERY: u32 = 5;
+
+fn discover_hwmon(fs: &dyn KernelFs) -> Vec<SensorSpec> {
+    let mut out = Vec::new();
+    let mut chip_names: HashMap<String, u32> = HashMap::new();
+    for hw in sorted_dir(fs, "/sys/class/hwmon") {
+        let base = format!("/sys/class/hwmon/{hw}");
+        let chip = fs
+            .read_attr(&format!("{base}/name"))
+            .unwrap_or_else(|_| hw.clone());
+        // Two chips with the same driver name get distinct keys.
+        let seq = chip_names.entry(chip.clone()).or_insert(0);
+        let chip_key = if *seq == 0 {
+            chip.clone()
+        } else {
+            format!("{chip}#{seq}")
+        };
+        *seq += 1;
+        let attrs = sorted_dir(fs, &base);
+        for attr in &attrs {
+            let Some(stem) = attr.strip_suffix("_input") else {
+                continue;
+            };
+            if out.len() >= MAX_SENSORS {
+                return out;
+            }
+            let class = stem.trim_end_matches(|c: char| c.is_ascii_digit());
+            let (kind, unit, scale) = match class {
+                "temp" => ("temperature", "celsius", 1e-3),
+                "fan" => ("fan", "rpm", 1.0),
+                "in" => ("voltage", "volts", 1e-3),
+                "curr" => ("current", "amperes", 1e-3),
+                "power" => ("power", "watts", 1e-6),
+                "humidity" => ("humidity", "percent", 1e-3),
+                "freq" => ("frequency", "hertz", 1.0),
+                _ => continue,
+            };
+            let has = |suffix: &str| attrs.iter().any(|a| a == &format!("{stem}_{suffix}"));
+            let threshold = |suffix: &str| {
+                has(suffix)
+                    .then(|| {
+                        fs.read_i64(&format!("{base}/{stem}_{suffix}"))
+                            .ok()
+                            .map(|v| v as f64 * scale)
+                    })
+                    .flatten()
+            };
+            out.push(SensorSpec {
+                id: EntityId::new(EntityKind::Sensor, format_args!("{chip_key}/{stem}")),
+                input: format!("{base}/{attr}"),
+                alarm: has("alarm").then(|| format!("{base}/{stem}_alarm")),
+                label: if has("label") {
+                    fs.read_attr(&format!("{base}/{stem}_label"))
+                        .unwrap_or_else(|_| stem.to_owned())
+                } else {
+                    stem.to_owned()
+                },
+                chip_key: chip_key.clone(),
+                kind,
+                unit,
+                scale,
+                max: threshold("max"),
+                crit: threshold("crit"),
+                min: threshold("min"),
+                slow: false,
+                last: None,
+            });
+        }
+    }
+    out
+}
 const MAX_SENSORS: usize = 4096;
 
 #[derive(Debug)]
 pub struct SensorCollector {
     env: Env,
     rates: RateTracker<String>,
+    specs: Vec<SensorSpec>,
+    specs_age: u32,
 }
 
 impl SensorCollector {
@@ -35,6 +132,8 @@ impl SensorCollector {
         SensorCollector {
             env,
             rates: RateTracker::new(),
+            specs: Vec::new(),
+            specs_age: 0,
         }
     }
 }
@@ -66,77 +165,58 @@ impl Collector for SensorCollector {
             .complete(Scope::Nodes(EntityKind::Battery))
             .complete(Scope::Nodes(EntityKind::PowerSupply))
             .complete(Scope::Edges(EdgeKind::Measures));
-        let mut count = 0usize;
-        let mut chip_names: HashMap<String, u32> = HashMap::new();
         let mut hottest: Option<(f64, String)> = None;
         self.rates.begin();
 
-        for hw in sorted_dir(fs, "/sys/class/hwmon") {
-            let base = format!("/sys/class/hwmon/{hw}");
-            let chip = fs
-                .read_attr(&format!("{base}/name"))
-                .unwrap_or_else(|_| hw.clone());
-            // Two chips with the same driver name get distinct keys.
-            let seq = chip_names.entry(chip.clone()).or_insert(0);
-            let chip_key = if *seq == 0 {
-                chip.clone()
-            } else {
-                format!("{chip}#{seq}")
+        // Sensor names, labels and thresholds are static: they are
+        // discovered every DISCOVERY_REFRESH passes; each sample then reads
+        // only the live `*_input` (and alarm) attributes.
+        if self.specs_age == 0 || self.specs_age >= DISCOVERY_REFRESH {
+            self.specs = discover_hwmon(fs);
+            self.specs_age = 0;
+        }
+        self.specs_age += 1;
+        let pass = self.specs_age;
+        for sp in &mut self.specs {
+            let mut n = NodeUpdate::new(EntityKind::Sensor, sp.id.clone())
+                .text("name", &format!("{} {}", sp.chip_key, sp.label))
+                .text("chip", &sp.chip_key)
+                .text("label", &sp.label)
+                .attr("sensor_kind", sp.kind)
+                .attr("unit", sp.unit);
+            let value = match (&sp.last, sp.slow && !pass.is_multiple_of(SLOW_EVERY)) {
+                (Some(last), true) => *last,
+                _ => {
+                    let started = std::time::Instant::now();
+                    let v = fs
+                        .read_i64(&sp.input)
+                        .map(|v| v as f64 * sp.scale)
+                        .map_err(|e| crate::unavailable_from(&e));
+                    sp.slow = started.elapsed() > SLOW_READ;
+                    sp.last = Some(v);
+                    v
+                }
             };
-            *seq += 1;
-            for attr in sorted_dir(fs, &base) {
-                let Some(stem) = attr.strip_suffix("_input") else {
-                    continue;
-                };
-                if count >= MAX_SENSORS {
-                    break;
-                }
-                let class = stem.trim_end_matches(|c: char| c.is_ascii_digit());
-                let (kind, unit, scale) = match class {
-                    "temp" => ("temperature", "celsius", 1e-3),
-                    "fan" => ("fan", "rpm", 1.0),
-                    "in" => ("voltage", "volts", 1e-3),
-                    "curr" => ("current", "amperes", 1e-3),
-                    "power" => ("power", "watts", 1e-6),
-                    "humidity" => ("humidity", "percent", 1e-3),
-                    "freq" => ("frequency", "hertz", 1.0),
-                    _ => continue,
-                };
-                let label = fs
-                    .read_attr(&format!("{base}/{stem}_label"))
-                    .unwrap_or_else(|_| stem.to_owned());
-                let id = EntityId::new(EntityKind::Sensor, format_args!("{chip_key}/{stem}"));
-                let mut n = NodeUpdate::new(EntityKind::Sensor, id)
-                    .text("name", &format!("{chip_key} {label}"))
-                    .text("chip", &chip_key)
-                    .text("label", &label)
-                    .attr("sensor_kind", kind)
-                    .attr("unit", unit);
-                let value = fs
-                    .read_i64(&format!("{base}/{attr}"))
-                    .map(|v| v as f64 * scale);
-                match &value {
-                    Ok(v) => n.push_metric("value", Metric::f64(*v)),
-                    Err(e) => {
-                        n.push_metric("value", Metric::unavailable(crate::unavailable_from(e)))
-                    }
-                }
-                for (suffix, key) in [("max", "max"), ("crit", "critical"), ("min", "min")] {
-                    if let Ok(v) = fs.read_i64(&format!("{base}/{stem}_{suffix}")) {
-                        n.push_metric(key, Metric::f64(v as f64 * scale));
-                    }
-                }
-                if let Ok(a) = fs.read_u64(&format!("{base}/{stem}_alarm")) {
-                    n = n.attr("alarm", a != 0);
-                }
-                if let (Ok(v), "temperature") = (value, kind)
-                    && hottest.as_ref().is_none_or(|(h, _)| v > *h)
-                {
-                    hottest = Some((v, format!("{chip_key} {label}")));
-                }
-                patch.node(n);
-                count += 1;
+            match &value {
+                Ok(v) => n.push_metric("value", Metric::f64(*v)),
+                Err(e) => n.push_metric("value", Metric::unavailable(*e)),
             }
+            for (key, v) in [("max", sp.max), ("critical", sp.crit), ("min", sp.min)] {
+                if let Some(v) = v {
+                    n.push_metric(key, Metric::f64(v));
+                }
+            }
+            if let Some(path) = &sp.alarm
+                && let Ok(a) = fs.read_u64(path)
+            {
+                n = n.attr("alarm", a != 0);
+            }
+            if let (Ok(v), "temperature") = (value, sp.kind)
+                && hottest.as_ref().is_none_or(|(h, _)| v > *h)
+            {
+                hottest = Some((v, format!("{} {}", sp.chip_key, sp.label)));
+            }
+            patch.node(n);
         }
 
         for z in sorted_dir(fs, "/sys/class/thermal")
@@ -144,6 +224,11 @@ impl Collector for SensorCollector {
             .filter(|z| z.starts_with("thermal_zone"))
         {
             let base = format!("/sys/class/thermal/{z}");
+            // A zone with its own hwmon device is already a hwmon sensor;
+            // reading it twice doubles a slow ACPI/EC query.
+            if sorted_dir(fs, &base).iter().any(|e| e.starts_with("hwmon")) {
+                continue;
+            }
             let ty = fs
                 .read_attr(&format!("{base}/type"))
                 .unwrap_or_else(|_| z.clone());
