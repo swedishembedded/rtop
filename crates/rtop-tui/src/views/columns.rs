@@ -271,6 +271,28 @@ pub fn block_devices(g: &SystemGraph) -> Vec<Column<'_>> {
         Column::new("SIZE", 9, m(g, "size_bytes", Fmt::Bytes))
             .right()
             .prio(2),
+        Column::new("HEALTH", 8, move |r, _, _| {
+            let h = node(g, r)
+                .and_then(|n| n.text("health"))
+                .unwrap_or("—")
+                .to_owned();
+            let st = match h.as_str() {
+                "ok" => Style::default().fg(theme::GOOD),
+                "warning" => Style::default()
+                    .fg(theme::WARN)
+                    .add_modifier(Modifier::BOLD),
+                "failing" => Style::default().fg(theme::BAD).add_modifier(Modifier::BOLD),
+                _ => theme::faint(),
+            };
+            (h, st)
+        })
+        .prio(7),
+        Column::new("WEAR", 6, m(g, "wear_percent", Fmt::Percent))
+            .right()
+            .prio(3),
+        Column::new("TEMP", 5, m(g, "temperature_celsius", Fmt::Celsius))
+            .right()
+            .prio(3),
     ]
 }
 

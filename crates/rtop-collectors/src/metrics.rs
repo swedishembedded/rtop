@@ -85,6 +85,8 @@ pub fn unit_of(key: &str) -> Unit {
         Unit::Other("volts")
     } else if k.ends_with("_a") {
         Unit::Other("amperes")
+    } else if k.ends_with("_hours") {
+        Unit::Other("hours")
     } else if k.ends_with("_mbps") {
         Unit::Other("megabits_per_second")
     } else {
@@ -196,6 +198,17 @@ specs! {
     "write_latency_ms" => "Average write completion time (block layer)",
     "disk_read_bytes_per_second" => "Read throughput of whole physical disks",
     "disk_write_bytes_per_second" => "Write throughput of whole physical disks",
+    "wear_percent" => "NVMe percentage of rated endurance used (may exceed 100)",
+    "available_spare_percent" => "NVMe spare capacity remaining",
+    "media_errors_total" => "NVMe unrecovered data integrity errors",
+    "unsafe_shutdowns_total" => "NVMe shutdowns without a shutdown notification",
+    "power_on_hours" => "Hours the drive has been powered",
+    "power_cycles_total" => "Drive power cycles",
+    "data_read_bytes_total" => "Bytes read over the drive's life",
+    "data_written_bytes_total" => "Bytes written over the drive's life",
+    "reallocated_sectors_total" => "ATA SMART 5: sectors remapped to spares",
+    "pending_sectors" => "ATA SMART 197: unstable sectors awaiting remapping",
+    "uncorrectable_sectors_total" => "ATA SMART 198: sectors that could not be read",
     "capacity_bytes" => "Filesystem size",
     "used_bytes" => "Used space",
     "available_bytes" => "Space available to unprivileged users",

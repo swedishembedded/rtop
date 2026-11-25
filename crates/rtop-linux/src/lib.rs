@@ -19,6 +19,7 @@
 //! they never panic on arbitrary input. [`sys`] wraps the few syscalls rtop
 //! needs (pidfd, priority, statvfs).
 
+pub mod disk_health;
 pub mod fs;
 pub mod memfs;
 pub mod netlink;

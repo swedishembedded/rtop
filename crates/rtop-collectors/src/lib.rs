@@ -35,6 +35,7 @@ pub mod docker;
 pub mod filesystems;
 pub mod firewall;
 pub mod gpu;
+pub mod health;
 pub mod host;
 pub mod inspect;
 pub mod memory;
@@ -169,6 +170,7 @@ pub struct Env {
     pub fs: Arc<dyn KernelFs>,
     pub diag: Arc<dyn SockDiag>,
     pub firewall: Arc<dyn rtop_linux::nftables::FirewallSource>,
+    pub disk_health: Arc<dyn rtop_linux::disk_health::DiskHealthSource>,
     pub subscriptions: Arc<Subscriptions>,
     /// `USER_HZ` of the observed system.
     pub clock_ticks: u64,
@@ -186,6 +188,7 @@ impl Env {
         Env {
             diag: Arc::new(rtop_linux::sockdiag::NetlinkDiag::new(fs.clone())),
             firewall: Arc::new(rtop_linux::nftables::Nftables::default()),
+            disk_health: Arc::new(rtop_linux::disk_health::DeviceHealth),
             fs,
             subscriptions,
             clock_ticks: rtop_linux::sys::clock_ticks(),
@@ -205,6 +208,7 @@ impl Env {
         Env {
             diag: Arc::new(rtop_linux::sockdiag::ProcNetDiag::new(fs.clone())),
             firewall: Arc::new(rtop_linux::nftables::NoFirewall),
+            disk_health: Arc::new(rtop_linux::disk_health::NoDiskHealth),
             fs,
             subscriptions,
             clock_ticks: 100,
@@ -224,6 +228,7 @@ pub fn all(env: &Env) -> Vec<Box<dyn Collector>> {
         Box::new(pressure::PressureCollector::new(env.clone())),
         Box::new(processes::ProcessCollector::new(env.clone())),
         Box::new(storage::StorageCollector::new(env.clone())),
+        Box::new(health::HealthCollector::new(env.clone())),
         Box::new(filesystems::FilesystemCollector::new(env.clone())),
         Box::new(network::NetworkCollector::new(env.clone())),
         Box::new(sockets::SocketCollector::new(env.clone())),

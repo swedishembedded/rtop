@@ -785,6 +785,60 @@ impl rtop_linux::nftables::FirewallSource for DemoFirewall {
     }
 }
 
+/// Demo drive health: a healthy NVMe SSD and a SATA disk with reallocated
+/// sectors, encoded and parsed through the real log formats.
+#[derive(Debug)]
+pub struct DemoDiskHealth;
+
+impl rtop_linux::disk_health::DiskHealthSource for DemoDiskHealth {
+    fn nvme(&self, controller: &str) -> Result<rtop_linux::disk_health::NvmeSmart, KernelError> {
+        if controller != "nvme0" {
+            return Err(KernelError::NotFound);
+        }
+        let s = rtop_linux::disk_health::NvmeSmart {
+            critical_warning: 0,
+            temperature_kelvin: 322,
+            available_spare_percent: 100,
+            available_spare_threshold_percent: 10,
+            percentage_used: 3,
+            data_units_read: 61_000_000,
+            data_units_written: 48_500_000,
+            power_cycles: 1_204,
+            power_on_hours: 3_918,
+            unsafe_shutdowns: 41,
+            media_errors: 0,
+            error_log_entries: 0,
+        };
+        rtop_linux::disk_health::parse_nvme_smart(&rtop_linux::disk_health::encode_nvme_smart(&s))
+            .ok_or(KernelError::Invalid("demo"))
+    }
+
+    fn ata(&self, device: &str) -> Result<rtop_linux::disk_health::AtaSmart, KernelError> {
+        use rtop_linux::disk_health::{AtaAttribute, AtaSmart, encode_ata_smart, parse_ata_smart};
+        if device != "sda" {
+            return Err(KernelError::NotFound);
+        }
+        let a = |id, value, raw| AtaAttribute {
+            id,
+            value,
+            worst: value,
+            raw,
+        };
+        let raw = encode_ata_smart(&[
+            a(5, 99, 8),
+            a(9, 72, 24_611),
+            a(12, 100, 382),
+            a(194, 64, 36),
+            a(197, 100, 0),
+            a(198, 100, 0),
+        ]);
+        Ok(AtaSmart {
+            attributes: parse_ata_smart(&raw).ok_or(KernelError::Invalid("demo"))?,
+            healthy: Some(true),
+        })
+    }
+}
+
 /// Docker Engine API answers for the demo containers.
 #[derive(Debug)]
 pub struct DemoDocker;
@@ -916,6 +970,7 @@ impl DemoMachine {
         env.diag = Arc::new(DemoDiag {
             state: self.state.clone(),
         });
+        env.disk_health = Arc::new(DemoDiskHealth);
         env.firewall = Arc::new(DemoFirewall {
             state: self.state.clone(),
         });
@@ -1105,6 +1160,9 @@ impl DemoMachine {
                 }
             }
         }
+        fs.dir("/sys/class/nvme/nvme0/nvme0n1");
+        fs.file("/sys/class/nvme/nvme0/firmware_rev", "DEMO1.20\n");
+        fs.file("/sys/block/sda/device/vendor", "ATA     \n");
         fs.link(
             "/sys/dev/block/259:2",
             "../../devices/pci0000:00/0000:00:06.0/nvme/nvme0/nvme0n1/nvme0n1p2",

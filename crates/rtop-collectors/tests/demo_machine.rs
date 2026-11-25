@@ -108,6 +108,18 @@ fn demo_graph_has_connected_workloads() {
     let bat = g.nodes_of(EntityKind::Battery).next().unwrap();
     assert!(bat.f64("time_remaining_seconds").unwrap() > 0.0);
     assert!(g.events().any(|e| e.message.contains("AppArmor")));
+    // Disk health: the NVMe drive is healthy, the SATA disk has
+    // reallocated sectors.
+    let nvme = g
+        .node(&EntityId::new(EntityKind::BlockDevice, "nvme0n1"))
+        .unwrap();
+    assert_eq!(nvme.text("health"), Some("ok"));
+    assert_eq!(nvme.f64("wear_percent"), Some(3.0));
+    let sda = g
+        .node(&EntityId::new(EntityKind::BlockDevice, "sda"))
+        .unwrap();
+    assert_eq!(sda.text("health"), Some("warning"));
+    assert_eq!(sda.f64("reallocated_sectors_total"), Some(8.0));
     // Firewall: counted rules have rates, the uninstrumented one is N/A.
     let rules: Vec<_> = g.nodes_of(EntityKind::FirewallRule).collect();
     assert_eq!(rules.len(), 6);

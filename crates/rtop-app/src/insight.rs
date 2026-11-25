@@ -146,6 +146,31 @@ pub fn insights(g: &SystemGraph) -> Vec<Insight> {
             );
         }
     }
+    for d in g.nodes_of(EntityKind::BlockDevice) {
+        match d.text("health") {
+            Some("failing") => push(
+                &mut out,
+                Severity::Critical,
+                format!(
+                    "Drive {} reports failure: {}",
+                    d.label(),
+                    d.text("health_detail").unwrap_or("")
+                ),
+                Some(d.id.clone()),
+            ),
+            Some("warning") => push(
+                &mut out,
+                Severity::Warning,
+                format!(
+                    "Drive {}: {}",
+                    d.label(),
+                    d.text("health_detail").unwrap_or("")
+                ),
+                Some(d.id.clone()),
+            ),
+            _ => {}
+        }
+    }
     if let Some(r) = f("tcp_retransmits_per_second").filter(|r| *r > 50.0) {
         push(
             &mut out,

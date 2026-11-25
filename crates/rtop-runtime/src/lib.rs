@@ -126,7 +126,13 @@ impl Runtime {
                 desc,
                 requests: req_tx,
                 outstanding: None,
-                next_due: now,
+                // Slow, infrequent collectors (disk health) usually augment
+                // entities other collectors create; let those exist first.
+                next_due: if desc.interval >= Duration::from_secs(30) {
+                    now.plus(Duration::from_secs(2))
+                } else {
+                    now
+                },
                 status,
                 enabled: true,
                 sequence: 0,
