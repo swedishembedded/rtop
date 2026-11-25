@@ -8,6 +8,8 @@ interfaces covered by semantic versioning are the command-line options, the
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-25
+
 ### Added
 
 - Pane borders can be dragged with the mouse to resize the panes on both
