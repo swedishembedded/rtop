@@ -35,7 +35,7 @@ RELEASE_TESTS ?= check test
 .PHONY: all build build/debug build/release install uninstall run run/stats \
 	test test/unit test/e2e test/performance test/soak test/fuzz check check/fmt check/clippy check/doc check/privacy check/audit \
 	fmt shots package/dist release release/patch release/minor release/major \
-	clean help _require-cargo-release
+	_release clean help
 
 ##@ Build
 
@@ -153,20 +153,33 @@ package/dist: build/release
 release:
 	@grep -E '^## release/' $(MAKEFILE_LIST) | sed 's/^## /  /'
 
-## release/patch - run RELEASE_TESTS, bump x.y.Z, date the CHANGELOG, commit and tag (local; push yourself)
-release/patch: _require-cargo-release $(RELEASE_TESTS)
-	@$(CARGO) release patch --execute --no-confirm
+## release/patch - run RELEASE_TESTS, bump x.y.Z with bump2version, date the CHANGELOG, commit and tag (local; push yourself)
+release/patch: $(RELEASE_TESTS)
+	@$(MAKE) --no-print-directory _release PART=patch
 
 ## release/minor - as release/patch for x.Y.0
-release/minor: _require-cargo-release $(RELEASE_TESTS)
-	@$(CARGO) release minor --execute --no-confirm
+release/minor: $(RELEASE_TESTS)
+	@$(MAKE) --no-print-directory _release PART=minor
 
 ## release/major - as release/patch for X.0.0
-release/major: _require-cargo-release $(RELEASE_TESTS)
-	@$(CARGO) release major --execute --no-confirm
+release/major: $(RELEASE_TESTS)
+	@$(MAKE) --no-print-directory _release PART=major
 
-_require-cargo-release:
-	@$(CARGO) release --version >/dev/null 2>&1 || $(CARGO) install cargo-release --locked
+# bump2version owns the version (.bumpversion.cfg); the workspace entries
+# of Cargo.lock and the dated CHANGELOG section go into the same release
+# commit, which is tagged vX.Y.Z.
+_release:
+	@command -v bump2version >/dev/null || { echo "release: install bump2version (pip install bump2version)" >&2; exit 2; }
+	@test -z "$$(git status --porcelain)" || { echo "release: working tree is not clean" >&2; exit 2; }
+	@grep -q '^## \[Unreleased\]' CHANGELOG.md || { echo "release: CHANGELOG.md has no [Unreleased] section" >&2; exit 2; }
+	bump2version --no-commit --no-tag $(PART)
+	$(CARGO) update --workspace --offline --quiet
+	@new=$$(sed -n 's/^current_version = //p' .bumpversion.cfg); \
+	sed -i "0,/^## \[Unreleased\]/s//## [Unreleased]\n\n## [$$new] - $$(date +%F)/" CHANGELOG.md && \
+	git add Cargo.toml Cargo.lock CHANGELOG.md .bumpversion.cfg && \
+	git commit -q -m "chore: release v$$new" && \
+	git tag -a "v$$new" -m "Release v$$new" && \
+	echo "tagged v$$new; push with: git push origin main v$$new"
 
 ##@ Housekeeping
 

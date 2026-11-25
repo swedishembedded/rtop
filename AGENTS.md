@@ -47,6 +47,6 @@ locations, not status.
 ## Workflow
 
 `make help` lists every target. Before committing: `make check` and `make test`.
-Releases: `make release/patch|minor|major` bumps, dates `CHANGELOG.md`, commits
+Releases: `make release/patch|minor|major` bumps with bump2version, dates `CHANGELOG.md`, commits
 and tags; pushing the tag runs `.github/workflows/release.yml`, which publishes
 only when every check passes.
