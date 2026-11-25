@@ -13,6 +13,12 @@ interfaces covered by semantic versioning are the command-line options, the
 - Pane borders can be dragged with the mouse to resize the panes on both
   sides; a double click restores the view's own proportions.
 
+### Fixed
+
+- The overview's card grid and the border between the cards and the process
+  table can be dragged too, and pressing a card's border no longer opens
+  that card's view.
+
 ## [1.1.0] - 2026-11-25
 
 ### Added

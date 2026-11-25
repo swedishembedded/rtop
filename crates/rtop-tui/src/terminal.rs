@@ -148,8 +148,9 @@ impl MouseTracker {
         }
         match m.kind {
             MouseEventKind::Down(MouseButton::Left) if m.modifiers.is_empty() => {
-                // A press on a border still clicks what is there (a panel's
-                // title line focuses it); moving before release resizes.
+                // A press on a border belongs to dragging: it never switches
+                // views or selects, it only focuses the pane whose title
+                // line it is on, as a click on a title always has.
                 self.drag = None;
                 if let Some(sp) = hits.splitter_at(x, y).copied() {
                     let double = self.last_border.is_some_and(|(t, id)| {
@@ -166,6 +167,10 @@ impl MouseTracker {
                         grab: i32::from(sp.boundary) - i32::from(sp.along(x, y)),
                         moved: false,
                     });
+                    return match hits.at(x, y) {
+                        Some(h @ Hit::Panel(_)) => Some(MouseAction::Click(h.clone())),
+                        _ => None,
+                    };
                 }
                 self.click(hits, x, y, now)
             }

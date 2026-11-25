@@ -105,7 +105,7 @@ pub fn cols(area: Rect, c: impl IntoIterator<Item = Constraint>) -> Vec<Rect> {
 /// Smallest pane a dragged border may leave: its frame and one line.
 const MIN_PANE: u16 = 3;
 
-/// Splits `area` like [`split`], then moves every boundary the user dragged
+/// Splits `area` like a ratatui `Layout`, then moves every boundary the user dragged
 /// (`ids[i]` names the boundary between pane `i` and `i + 1`) and registers
 /// each boundary between two non-empty panes as a draggable border.
 ///
@@ -190,6 +190,20 @@ pub fn resizable(
 }
 
 // ----- overview cards -----------------------------------------------------
+
+/// Borders between rows of overview cards (at most four rows).
+const CARD_ROW_IDS: [SplitId; 3] = [
+    SplitId("overview.cards.row1"),
+    SplitId("overview.cards.row2"),
+    SplitId("overview.cards.row3"),
+];
+/// Borders between card columns, four or two cards to a row.
+const CARD_COL_IDS_4: [SplitId; 3] = [
+    SplitId("overview.cards4.col1"),
+    SplitId("overview.cards4.col2"),
+    SplitId("overview.cards4.col3"),
+];
+const CARD_COL_IDS_2: [SplitId; 1] = [SplitId("overview.cards2.col1")];
 
 struct Card {
     view: View,
@@ -592,18 +606,30 @@ pub fn overview(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
         5
     };
     let max_rows = ((h.saturating_sub(8)) / card_h).max(1) as usize;
-    let card_rows = (all.len().div_ceil(per_row)).min(max_rows);
+    let card_rows = (all.len().div_ceil(per_row))
+        .min(max_rows)
+        .min(CARD_ROW_IDS.len() + 1);
     let shown = card_rows * per_row;
     let mut constraints: Vec<Constraint> =
         (0..card_rows).map(|_| Constraint::Length(card_h)).collect();
+    // Boundaries: between card rows, below the cards, above the table.
+    let mut ids: Vec<SplitId> = CARD_ROW_IDS[..card_rows - 1].to_vec();
+    ids.push(SplitId("overview.cards"));
     let insight = insight_lines(c, if w >= 140 { 8 } else { 2 });
     let side = w >= 140 && !insight.is_empty();
     let inline_insights = if side { 0 } else { insight.len().min(2) as u16 };
     if inline_insights > 0 {
         constraints.push(Constraint::Length(inline_insights));
+        ids.push(SplitId("overview.insights.inline"));
     }
     constraints.push(Constraint::Min(4));
-    let r = rows(area, constraints);
+    let r = resizable(Axis::Vertical, area, constraints, &ids, c.s, hits);
+    // Column borders are shared by every row of cards.
+    let col_ids: &[SplitId] = if per_row == 4 {
+        &CARD_COL_IDS_4
+    } else {
+        &CARD_COL_IDS_2
+    };
     for (row, chunk) in all
         .into_iter()
         .take(shown)
@@ -611,9 +637,13 @@ pub fn overview(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
         .chunks_mut(per_row)
         .enumerate()
     {
-        let cells = cols(
+        let cells = resizable(
+            Axis::Horizontal,
             r[row],
             (0..per_row).map(|_| Constraint::Ratio(1, per_row as u32)),
+            col_ids,
+            c.s,
+            hits,
         );
         for (i, k) in chunk.iter_mut().enumerate() {
             let k = std::mem::replace(

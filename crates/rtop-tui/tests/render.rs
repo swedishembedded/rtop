@@ -438,3 +438,49 @@ fn every_border_of_every_view_stays_usable_at_its_extremes() {
         }
     }
 }
+
+fn card(hits: &HitMap, view: View) -> Rect {
+    hits.iter()
+        .find(|(r, h)| *h == Hit::Tab(view) && r.height > 3)
+        .map(|(r, _)| *r)
+        .unwrap_or_else(|| panic!("{view:?} card"))
+}
+
+/// The overview's card grid, the cards above the process table and the
+/// insights beside it are all resizable, and pressing a card's border drags
+/// it instead of opening that card's view.
+#[test]
+fn overview_card_and_table_borders_drag_without_switching_views() {
+    let mut w = world();
+    let size = (200, 50);
+    let (_, hits) = w.draw(size.0, size.1);
+    let (mem, cont) = (card(&hits, View::Memory), card(&hits, View::Containers));
+    assert_eq!(mem.x, cont.x, "Containers sits below Memory");
+
+    // Row border: Memory's bottom edge / Containers' top edge.
+    let row_border = cont.y;
+    let hits = w.drag(size, (mem.x + 10, row_border), (mem.x + 10, row_border + 3));
+    assert_eq!(w.s.location.view, View::Overview, "no view switch");
+    assert_eq!(card(&hits, View::Containers).y, row_border + 3);
+    assert_eq!(card(&hits, View::Memory).height, mem.height + 3);
+
+    // Column border: Memory's right edge, shared by every card row.
+    let col = card(&hits, View::Memory).x + card(&hits, View::Memory).width - 1;
+    let hits = w.drag(size, (col, mem.y + 2), (col + 6, mem.y + 2));
+    assert_eq!(w.s.location.view, View::Overview);
+    let (m, c) = (card(&hits, View::Memory), card(&hits, View::Containers));
+    assert_eq!(m.x + m.width - 1, col + 6);
+    assert_eq!(c.x + c.width, m.x + m.width, "both rows follow");
+
+    // Cards / process table border.
+    let table = rect(&hits, Panel::Processes);
+    let hits = w.drag(size, (20, table.y), (20, table.y + 4));
+    assert_eq!(w.s.location.view, View::Overview);
+    assert_eq!(rect(&hits, Panel::Processes).y, table.y + 4);
+
+    // Process table / insights border.
+    let table = rect(&hits, Panel::Processes);
+    let edge = table.x + table.width - 1;
+    let hits = w.drag(size, (edge, table.y + 5), (edge - 20, table.y + 5));
+    assert_eq!(rect(&hits, Panel::Processes).width, table.width - 20);
+}
