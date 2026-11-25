@@ -439,6 +439,29 @@ fn every_border_of_every_view_stays_usable_at_its_extremes() {
     }
 }
 
+/// Load cards show their percentage above a rolling graph, without a
+/// horizontal bar between the two.
+#[test]
+fn load_cards_have_no_bar_above_their_graph() {
+    let w = world();
+    let (text, hits) = w.draw(160, 48);
+    let lines: Vec<&str> = text.lines().collect();
+    for view in [View::Cpu, View::Memory, View::Gpu] {
+        let card = hits
+            .iter()
+            .find(|(r, h)| *h == Hit::Tab(view) && r.height > 3)
+            .map(|(r, _)| *r)
+            .unwrap_or_else(|| panic!("{view:?} card"));
+        let head: String = lines[usize::from(card.y) + 1]
+            .chars()
+            .skip(usize::from(card.x) + 1)
+            .take(usize::from(card.width) - 2)
+            .collect();
+        assert!(head.contains('%'), "{view:?}: percentage kept: {head:?}");
+        assert!(!head.contains(['█', '·']), "{view:?}: no bar: {head:?}");
+    }
+}
+
 fn card(hits: &HitMap, view: View) -> Rect {
     hits.iter()
         .find(|(r, h)| *h == Hit::Tab(view) && r.height > 3)

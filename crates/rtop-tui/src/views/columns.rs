@@ -209,10 +209,7 @@ pub fn cpus(g: &SystemGraph) -> Vec<Column<'_>> {
         .prio(2),
         Column::new("USAGE", 14, move |r, _, w| {
             let v = node(g, r).and_then(|n| n.f64("cpu_usage_percent"));
-            let s: String = crate::widgets::bar(v, w, theme::level(v.unwrap_or(-1.0)))
-                .iter()
-                .map(|s| s.content.to_string())
-                .collect();
+            let s: String = crate::widgets::bar_text(v, w);
             (s, Style::default().fg(theme::level(v.unwrap_or(-1.0))))
         })
         .flex(),
@@ -305,10 +302,7 @@ pub fn mounts(g: &SystemGraph) -> Vec<Column<'_>> {
         Column::new("USED", 12, move |r, _, w| {
             let v = node(g, r).and_then(|n| n.f64("used_percent"));
             (
-                crate::widgets::bar(v, w, theme::level(v.unwrap_or(-1.0)))
-                    .iter()
-                    .map(|s| s.content.to_string())
-                    .collect(),
+                crate::widgets::bar_text(v, w),
                 Style::default().fg(theme::level(v.unwrap_or(-1.0))),
             )
         })
@@ -637,10 +631,7 @@ pub fn gpus(g: &SystemGraph) -> Vec<Column<'_>> {
         Column::new("UTIL", 10, move |r, _, w| {
             let v = node(g, r).and_then(|n| n.f64("gpu_usage_percent"));
             (
-                crate::widgets::bar(v, w, theme::ACCENT)
-                    .iter()
-                    .map(|s| s.content.to_string())
-                    .collect(),
+                crate::widgets::bar_text(v, w),
                 Style::default().fg(theme::ACCENT),
             )
         })
@@ -773,10 +764,7 @@ pub fn power(g: &SystemGraph) -> Vec<Column<'_>> {
         Column::new("CHARGE", 12, move |r, _, w| {
             let v = node(g, r).and_then(|n| n.f64("capacity_percent"));
             (
-                crate::widgets::bar(v, w, theme::level(100.0 - v.unwrap_or(101.0)))
-                    .iter()
-                    .map(|s| s.content.to_string())
-                    .collect(),
+                crate::widgets::bar_text(v, w),
                 Style::default().fg(if v.is_some_and(|v| v < 20.0) {
                     theme::BAD
                 } else {

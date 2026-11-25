@@ -23,22 +23,73 @@ use crate::theme;
 const EIGHTHS: [char; 9] = [' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
 const LEVELS: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 
+/// How a bar or graph is coloured.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fill {
+    /// One colour, for quantities that are not a load (rates, categories).
+    Solid(Color),
+    /// Load lanes by position along the scale ([`theme::level`]): a
+    /// full bar or graph shows green, then yellow, then red.
+    Lanes,
+}
+
+impl Fill {
+    /// Colour of the cell covering the share `from..to` (0–1) of the scale
+    /// for a value of `value` (0–1). Lanes are judged at the cell's middle,
+    /// or at the value when that is lower: a cell never shows a lane above
+    /// the value it draws.
+    fn at(self, from: f64, to: f64, value: f64) -> Color {
+        match self {
+            Fill::Solid(c) => c,
+            Fill::Lanes => theme::level(100.0 * (0.5 * (from + to)).min(value)),
+        }
+    }
+}
+
 /// Horizontal bar of `width` cells filled to `pct` (0–100).
-pub fn bar(pct: Option<f64>, width: usize, color: Color) -> Vec<Span<'static>> {
+pub fn bar(pct: Option<f64>, width: usize, fill: Fill) -> Vec<Span<'static>> {
     let Some(p) = pct.filter(|p| p.is_finite()) else {
         return vec![Span::styled("·".repeat(width), theme::faint())];
     };
     let eighths = ((p.clamp(0.0, 100.0) / 100.0) * (width * 8) as f64).round() as usize;
     let full = eighths / 8;
-    let mut s = "█".repeat(full);
-    if full < width {
-        s.push(EIGHTHS[eighths % 8]);
+    let value = p.clamp(0.0, 100.0) / 100.0;
+    let cell = |i: usize| {
+        fill.at(
+            i as f64 / width as f64,
+            (i + 1) as f64 / width as f64,
+            value,
+        )
+    };
+    // One span per run of equal colour.
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut push = |ch: char, color: Color| match spans.last_mut() {
+        Some(last) if last.style.fg == Some(color) => last.content.to_mut().push(ch),
+        _ => spans.push(Span::styled(ch.to_string(), Style::default().fg(color))),
+    };
+    for i in 0..full.min(width) {
+        push('█', cell(i));
     }
-    let rest = width.saturating_sub(s.chars().count());
-    vec![
-        Span::styled(s, Style::default().fg(color)),
-        Span::styled("·".repeat(rest), Style::default().fg(theme::FAINT)),
-    ]
+    if full < width && !eighths.is_multiple_of(8) {
+        push(EIGHTHS[eighths % 8], cell(full));
+    }
+    let drawn: usize = spans.iter().map(|s| s.content.chars().count()).sum();
+    let rest = width.saturating_sub(drawn);
+    if rest > 0 {
+        spans.push(Span::styled(
+            "·".repeat(rest),
+            Style::default().fg(theme::FAINT),
+        ));
+    }
+    spans
+}
+
+/// The characters of [`bar`], for table cells drawn in one style.
+pub fn bar_text(pct: Option<f64>, width: usize) -> String {
+    bar(pct, width, Fill::Lanes)
+        .iter()
+        .map(|s| s.content.as_ref())
+        .collect()
 }
 
 /// One-row sparkline of the last `width` samples; gaps stay blank.
@@ -57,7 +108,7 @@ pub fn sparkline(samples: &[Option<f64>], width: usize, max: f64, color: Color) 
 }
 
 /// Multi-row area graph filling `area`, newest sample at the right.
-pub fn graph(buf: &mut Buffer, area: Rect, samples: &[Option<f64>], max: f64, color: Color) {
+pub fn graph(buf: &mut Buffer, area: Rect, samples: &[Option<f64>], max: f64, fill: Fill) {
     if area.width == 0 || area.height == 0 {
         return;
     }
@@ -79,6 +130,12 @@ pub fn graph(buf: &mut Buffer, area: Rect, samples: &[Option<f64>], max: f64, co
                 break;
             }
             let y = area.y + area.height - 1 - row;
+            let h = f64::from(area.height);
+            let color = fill.at(
+                f64::from(row) / h,
+                f64::from(row + 1) / h,
+                f64::from(filled) / h8,
+            );
             if let Some(cell) = buf.cell_mut((x, y)) {
                 cell.set_char(LEVELS[level as usize]).set_fg(color);
             }
@@ -405,4 +462,91 @@ pub fn kv_line(pairs: Vec<(&str, Span<'static>)>) -> Line<'static> {
         spans.push(v);
     }
     Line::from(spans)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The load scale: the lower half green, the next 30 % yellow, the top
+    /// 20 % red.
+    #[test]
+    fn load_lanes_are_half_green_then_yellow_then_red() {
+        assert_eq!(theme::level(0.0), theme::GOOD);
+        assert_eq!(theme::level(49.9), theme::GOOD);
+        assert_eq!(theme::level(50.0), theme::WARN);
+        assert_eq!(theme::level(79.9), theme::WARN);
+        assert_eq!(theme::level(80.0), theme::BAD);
+        assert_eq!(theme::level(100.0), theme::BAD);
+    }
+
+    #[test]
+    fn a_full_graph_shows_the_three_lanes_by_height() {
+        let area = Rect::new(0, 0, 1, 10);
+        let mut buf = Buffer::empty(area);
+        graph(&mut buf, area, &[Some(100.0)], 100.0, Fill::Lanes);
+        let colors: Vec<Color> = (0..10).rev().map(|y| buf[(0, y)].fg).collect();
+        let lanes = [
+            [theme::GOOD; 5].as_slice(),
+            &[theme::WARN; 3],
+            &[theme::BAD; 2],
+        ]
+        .concat();
+        assert_eq!(colors, lanes, "bottom to top");
+
+        // A value never shows a lane above its own: 47 % tops out in a cell
+        // whose middle is in the yellow lane, but stays green.
+        let short = Rect::new(0, 0, 1, 5);
+        let mut buf = Buffer::empty(short);
+        graph(&mut buf, short, &[Some(47.0)], 100.0, Fill::Lanes);
+        assert_eq!(buf[(0, 2)].fg, theme::GOOD, "{:?}", buf[(0, 2)]);
+        let b = bar(Some(47.0), 5, Fill::Lanes);
+        assert!(
+            b.iter()
+                .filter(|s| !s.content.contains('·'))
+                .all(|s| s.style.fg == Some(theme::GOOD))
+        );
+
+        // A low sample never reaches the upper lanes; one colour stays one.
+        let mut buf = Buffer::empty(area);
+        graph(&mut buf, area, &[Some(30.0)], 100.0, Fill::Lanes);
+        assert_eq!(buf[(0, 9)].fg, theme::GOOD);
+        assert_eq!(buf[(0, 6)].symbol(), " ");
+        let mut buf = Buffer::empty(area);
+        graph(
+            &mut buf,
+            area,
+            &[Some(100.0)],
+            100.0,
+            Fill::Solid(theme::CYAN),
+        );
+        assert!((0..10).all(|y| buf[(0, y)].fg == theme::CYAN));
+    }
+
+    #[test]
+    fn a_bar_is_coloured_by_position_along_it() {
+        let colors = |pct| -> Vec<(char, Color)> {
+            bar(Some(pct), 10, Fill::Lanes)
+                .iter()
+                .flat_map(|s| s.content.chars().map(move |c| (c, s.style.fg.unwrap())))
+                .collect()
+        };
+        let full = colors(100.0);
+        let lanes = [
+            [theme::GOOD; 5].as_slice(),
+            &[theme::WARN; 3],
+            &[theme::BAD; 2],
+        ]
+        .concat();
+        assert_eq!(full.iter().map(|(_, c)| *c).collect::<Vec<_>>(), lanes);
+        // 30 %: three green cells, the rest is the faint track.
+        let low = colors(30.0);
+        assert!(
+            low[..3]
+                .iter()
+                .all(|(ch, c)| *ch == '█' && *c == theme::GOOD)
+        );
+        assert!(low[3..].iter().all(|(ch, _)| *ch == '·'));
+        assert_eq!(low.len(), 10);
+    }
 }

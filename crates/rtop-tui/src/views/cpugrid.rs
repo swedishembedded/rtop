@@ -22,7 +22,7 @@ use rtop_app::Hit;
 use super::Ctx;
 use crate::hits::HitMap;
 use crate::theme;
-use crate::widgets::{bar, framed, panel};
+use crate::widgets::{Fill, bar, framed, panel};
 
 /// Minimum width of a full cell (`cpu127 P ▕bar▏ 100% 3.73G`).
 pub const FULL_MIN: u16 = 24;
@@ -212,7 +212,7 @@ pub fn render(f: &mut Frame, area: Rect, c: &Ctx<'_>, idx: usize, hits: &mut Hit
             spans.push(Span::styled(label, theme::dim()));
             spans.push(Span::styled(kind, Style::default().fg(theme::MAGENTA)));
             let w = (g.cell_width as usize).saturating_sub(used).max(1);
-            spans.extend(bar(pct, w, color));
+            spans.extend(bar(pct, w, Fill::Lanes));
             spans.push(Span::raw(" "));
             spans.push(Span::styled(
                 pct_text,
@@ -239,7 +239,7 @@ pub fn render(f: &mut Frame, area: Rect, c: &Ctx<'_>, idx: usize, hits: &mut Hit
             continue;
         }
         let w = (g.cell_width as usize).saturating_sub(used).max(1);
-        spans.extend(bar(pct, w, color));
+        spans.extend(bar(pct, w, Fill::Lanes));
         spans.push(Span::raw(" "));
         spans.push(Span::styled(pct_text, Style::default().fg(color)));
         f.render_widget(

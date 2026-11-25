@@ -23,7 +23,7 @@ use rtop_core::{EntityId, EntityKind, Node, Severity, SystemGraph};
 use crate::fmt::{self, Fmt};
 use crate::hits::{Axis, HitMap, Splitter, boundary_at};
 use crate::theme;
-use crate::widgets::{self, framed, kv_line, panel, table};
+use crate::widgets::{self, Fill, framed, kv_line, panel, table};
 
 #[allow(missing_debug_implementations)]
 pub struct Ctx<'a> {
@@ -210,7 +210,8 @@ struct Card {
     title: &'static str,
     value: String,
     value_color: Color,
-    bar: Option<f64>,
+    /// The graph is a load on a 0–100 scale, drawn in load lanes.
+    lanes: bool,
     series: Vec<Option<f64>>,
     series_max: f64,
     lines: Vec<Line<'static>>,
@@ -227,19 +228,12 @@ fn card(f: &mut Frame, area: Rect, c: Card, hits: &mut HitMap) {
         return;
     }
     let mut y = inner.y;
-    let mut head = vec![Span::styled(
+    let head = Span::styled(
         c.value.clone(),
         Style::default()
             .fg(c.value_color)
             .add_modifier(Modifier::BOLD),
-    )];
-    if let Some(p) = c.bar {
-        let w = inner
-            .width
-            .saturating_sub(c.value.chars().count() as u16 + 2) as usize;
-        head.push(Span::raw("  "));
-        head.extend(widgets::bar(Some(p), w, c.value_color));
-    }
+    );
     f.render_widget(
         Paragraph::new(Line::from(head)),
         Rect {
@@ -266,7 +260,11 @@ fn card(f: &mut Frame, area: Rect, c: Card, hits: &mut HitMap) {
             },
             &c.series,
             max,
-            c.value_color,
+            if c.lanes {
+                Fill::Lanes
+            } else {
+                Fill::Solid(c.value_color)
+            },
         );
         y += graph_h;
     }
@@ -339,7 +337,7 @@ fn cards(c: &Ctx<'_>) -> Vec<Card> {
             title: "CPU",
             value: na_or(cpu, Fmt::Percent),
             value_color: pct_color(cpu),
-            bar: cpu,
+            lanes: true,
             series: c.host_series("cpu_usage_percent"),
             series_max: 100.0,
             lines: vec![line(vec![
@@ -359,7 +357,7 @@ fn cards(c: &Ctx<'_>) -> Vec<Card> {
             title: "Memory",
             value: na_or(mem, Fmt::Percent),
             value_color: pct_color(mem),
-            bar: mem,
+            lanes: true,
             series: c.host_series("memory_used_percent"),
             series_max: 100.0,
             lines: vec![
@@ -391,7 +389,7 @@ fn cards(c: &Ctx<'_>) -> Vec<Card> {
                     .map_or("N/A".into(), format_rate)
             ),
             value_color: theme::CYAN,
-            bar: None,
+            lanes: false,
             series: disk_series,
             series_max: 0.0,
             lines: vec![line(vec![
@@ -426,7 +424,7 @@ fn cards(c: &Ctx<'_>) -> Vec<Card> {
                     .map_or("N/A".into(), format_rate)
             ),
             value_color: theme::GOOD,
-            bar: None,
+            lanes: false,
             series: c.host_series("network_rx_bytes_per_second"),
             series_max: 0.0,
             lines: vec![line(vec![
@@ -445,7 +443,7 @@ fn cards(c: &Ctx<'_>) -> Vec<Card> {
                 na_or(g.f64("gpu_usage_percent"), Fmt::Percent)
             }),
             value_color: theme::MAGENTA,
-            bar: gpu.and_then(|g| g.f64("gpu_usage_percent")),
+            lanes: true,
             series: gpu
                 .map(|g| c.series(&g.id, "gpu_usage_percent"))
                 .unwrap_or_default(),
@@ -476,7 +474,7 @@ fn cards(c: &Ctx<'_>) -> Vec<Card> {
                 )
             },
             value_color: theme::ACCENT,
-            bar: None,
+            lanes: false,
             series: Vec::new(),
             series_max: 0.0,
             lines: top_container
@@ -512,7 +510,7 @@ fn cards(c: &Ctx<'_>) -> Vec<Card> {
             value_color: c
                 .h("temperature_max_celsius")
                 .map_or(theme::FAINT, theme::level),
-            bar: None,
+            lanes: false,
             series: c.host_series("temperature_max_celsius"),
             series_max: 110.0,
             lines: vec![line(vec![
@@ -545,7 +543,7 @@ fn cards(c: &Ctx<'_>) -> Vec<Card> {
             } else {
                 theme::GOOD
             },
-            bar: None,
+            lanes: false,
             series: Vec::new(),
             series_max: 0.0,
             lines: vec![line(vec![
@@ -653,7 +651,7 @@ pub fn overview(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
                     title: "",
                     value: String::new(),
                     value_color: theme::TEXT,
-                    bar: None,
+                    lanes: false,
                     series: Vec::new(),
                     series_max: 0.0,
                     lines: Vec::new(),
@@ -727,7 +725,7 @@ fn summary_block(
     area: Rect,
     title: &str,
     lines: Vec<Line<'static>>,
-    graphs: Vec<(String, Vec<Option<f64>>, f64, Color)>,
+    graphs: Vec<(String, Vec<Option<f64>>, f64, Fill)>,
 ) {
     let inner = framed(
         f,
@@ -887,13 +885,13 @@ pub fn cpu(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
                     "utilisation".into(),
                     c.host_series("cpu_usage_percent"),
                     100.0,
-                    theme::GOOD,
+                    Fill::Lanes,
                 ),
                 (
                     "pressure".into(),
                     c.host_series("psi_cpu_some_avg10"),
                     100.0,
-                    theme::WARN,
+                    Fill::Lanes,
                 ),
             ],
         );
@@ -908,9 +906,9 @@ pub fn memory(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
             .map(|v| if total > 0.0 { 100.0 * v / total } else { 0.0 })
     };
     let bar_w = (area.width / 3).clamp(10, 40) as usize;
-    let row = |label: &str, key: &'static str, color: Color| {
+    let row = |label: &str, key: &'static str, fill: Fill| {
         let mut spans = vec![Span::styled(format!("{label:<12}"), theme::dim())];
-        spans.extend(widgets::bar(share(key), bar_w, color));
+        spans.extend(widgets::bar(share(key), bar_w, fill));
         spans.push(Span::raw(format!(
             " {}",
             c.h(key).map_or("N/A".into(), format_bytes)
@@ -923,24 +921,32 @@ pub fn memory(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
         .filter(|(_, t)| *t > 0.0)
         .map(|(u, t)| 100.0 * u / t);
     let mut swap = vec![Span::styled(format!("{:<12}", "swap used"), theme::dim())];
-    swap.extend(widgets::bar(swap_pct, bar_w, pct_color(swap_pct)));
+    swap.extend(widgets::bar(swap_pct, bar_w, Fill::Lanes));
     swap.push(Span::raw(format!(
         " {}",
         c.h("swap_used_bytes").map_or("N/A".into(), format_bytes)
     )));
     let mut lines = vec![
+        row("used", "memory_used_bytes", Fill::Lanes),
         row(
-            "used",
-            "memory_used_bytes",
-            theme::level(share("memory_used_bytes").unwrap_or(0.0)),
+            "available",
+            "memory_available_bytes",
+            Fill::Solid(theme::GOOD),
         ),
-        row("available", "memory_available_bytes", theme::GOOD),
-        row("page cache", "memory_cached_bytes", theme::CYAN),
-        row("anonymous", "memory_anon_bytes", theme::MAGENTA),
+        row(
+            "page cache",
+            "memory_cached_bytes",
+            Fill::Solid(theme::CYAN),
+        ),
+        row(
+            "anonymous",
+            "memory_anon_bytes",
+            Fill::Solid(theme::MAGENTA),
+        ),
         row(
             "kernel slab",
             "memory_slab_unreclaimable_bytes",
-            theme::WARN,
+            Fill::Solid(theme::WARN),
         ),
         Line::from(swap),
         kv_line(vec![
@@ -984,13 +990,13 @@ pub fn memory(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
                 "used %".into(),
                 c.host_series("memory_used_percent"),
                 100.0,
-                theme::GOOD,
+                Fill::Lanes,
             ),
             (
                 "memory pressure".into(),
                 c.host_series("psi_memory_some_avg10"),
                 100.0,
-                theme::WARN,
+                Fill::Lanes,
             ),
         ],
     );
@@ -1001,7 +1007,7 @@ pub fn memory(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
 pub type Summary<'a> = (
     &'a str,
     Vec<Line<'static>>,
-    Vec<(String, Vec<Option<f64>>, f64, Color)>,
+    Vec<(String, Vec<Option<f64>>, f64, Fill)>,
 );
 
 pub fn two_tables(
@@ -1068,13 +1074,13 @@ pub fn storage(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
                     "read".into(),
                     c.host_series("disk_read_bytes_per_second"),
                     0.0,
-                    theme::CYAN,
+                    Fill::Solid(theme::CYAN),
                 ),
                 (
                     "write".into(),
                     c.host_series("disk_write_bytes_per_second"),
                     0.0,
-                    theme::MAGENTA,
+                    Fill::Solid(theme::MAGENTA),
                 ),
             ],
         )),
@@ -1142,13 +1148,13 @@ pub fn network(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
                     "receive".into(),
                     c.host_series("network_rx_bytes_per_second"),
                     0.0,
-                    theme::GOOD,
+                    Fill::Solid(theme::GOOD),
                 ),
                 (
                     "transmit".into(),
                     c.host_series("network_tx_bytes_per_second"),
                     0.0,
-                    theme::ACCENT,
+                    Fill::Solid(theme::ACCENT),
                 ),
             ],
         );

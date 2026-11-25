@@ -46,11 +46,13 @@ pub fn key() -> Style {
     Style::default().fg(BG).bg(DIM).add_modifier(Modifier::BOLD)
 }
 
-/// Green → amber → red as a share of capacity rises.
+/// The load scale for a share of capacity (0–100): green for the lower
+/// half, yellow up to 80 %, red for the top 20 %. Graphs and bars use the
+/// same lanes, so a value is drawn in the colour of the lane it is in.
 pub fn level(pct: f64) -> Color {
-    if pct >= 90.0 {
+    if pct >= 80.0 {
         BAD
-    } else if pct >= 70.0 {
+    } else if pct >= 50.0 {
         WARN
     } else if pct >= 0.0 {
         GOOD

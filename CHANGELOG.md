@@ -13,6 +13,13 @@ interfaces covered by semantic versioning are the command-line options, the
 - Pane borders can be dragged with the mouse to resize the panes on both
   sides; a double click restores the view's own proportions.
 
+### Changed
+
+- Load is drawn in three lanes: graphs and bars of a 0–100 % load (CPU,
+  CPU cores, memory, swap, GPU, pressure) are green up to 50 %, yellow up to
+  80 % and red above, and values use the same thresholds. The overview's
+  load cards no longer draw a bar above their graph; the percentage stays.
+
 ### Fixed
 
 - The overview's card grid and the border between the cards and the process
