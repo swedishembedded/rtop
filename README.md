@@ -113,7 +113,7 @@ actions are disabled; there is no racy fallback.
 - rtop reports its own CPU, memory and thread count, and the cost and missed
   deadlines of every telemetry source, in view `8`. Expensive detail (socket
   tables, descriptor scans, per-process I/O, GPU clients) is collected only
-  while a view shows it; telemetry redraws are coalesced to four per second.
+  while a view shows it; telemetry redraws are coalesced to two per second.
 
 ## Everything on screen is scriptable
 
