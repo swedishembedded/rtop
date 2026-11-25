@@ -98,3 +98,37 @@ fn invalid_arguments_fail_with_usage() {
         "--json requires --stats"
     );
 }
+
+/// `--strict` turns an incomplete snapshot into exit status 2 while still
+/// printing the document; the demo machine is always incomplete because it
+/// has no rtop process for the self-monitoring collector to measure.
+#[test]
+fn strict_fails_an_incomplete_snapshot_but_still_prints_it() {
+    let lenient = rtop()
+        .args(["--stats", "--json", "--demo", "--interval", "200ms"])
+        .output()
+        .unwrap();
+    let doc: serde_json::Value = serde_json::from_slice(&lenient.stdout).unwrap();
+    assert_eq!(doc["complete"], false);
+    assert!(
+        lenient.status.success(),
+        "incomplete is not an error by default"
+    );
+
+    let strict = rtop()
+        .args([
+            "--stats",
+            "--json",
+            "--demo",
+            "--interval",
+            "200ms",
+            "--strict",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(strict.status.code(), Some(2));
+    let doc: serde_json::Value =
+        serde_json::from_slice(&strict.stdout).expect("document still printed");
+    assert!(doc["nodes"].as_array().is_some_and(|n| !n.is_empty()));
+    assert!(String::from_utf8_lossy(&strict.stderr).contains("monitor"));
+}
