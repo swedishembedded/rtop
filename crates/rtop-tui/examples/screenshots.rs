@@ -172,6 +172,7 @@ fn scripts() -> Vec<(&'static str, Script)> {
         ("network", |s| s.keys("5")),
         ("containers", |s| s.keys("6")),
         ("gpu", |s| s.keys("7")),
+        ("nodes", |s| s.keys("c")),
         ("security", |s| s.keys("8")),
         ("sensors", |s| s.keys("9")),
         ("inspect-process", |s| {

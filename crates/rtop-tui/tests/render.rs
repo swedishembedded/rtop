@@ -515,7 +515,7 @@ fn gpu_view_details_the_gpu_under_the_cursor() {
     w.ev(Event::GraphChanged);
     let title_of = |text: &str| {
         text.lines()
-            .find(|l| l.contains(" · 0000:"))
+            .find(|l| l.contains("╭") && l.contains(" · ") && l.contains(":01:00.0"))
             .map(str::to_owned)
             .expect("a GPU detail panel")
     };
@@ -529,9 +529,9 @@ fn gpu_view_details_the_gpu_under_the_cursor() {
     let (second, _) = w.draw(160, 50);
     assert_ne!(title_of(&second), first_title, "detail follows the cursor");
     // The NVIDIA GPU's detail includes its limits, clocks and identity.
-    w.keys("kkk");
+    w.keys("gg");
     let mut found = false;
-    for _ in 0..3 {
+    for _ in 0..12 {
         let (t, _) = w.draw(160, 50);
         if t.contains("Demo RTX Laptop GPU · 0000:01:00.0") {
             for want in [

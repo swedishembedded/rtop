@@ -1090,11 +1090,17 @@ pub fn storage(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
 }
 
 pub fn network(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
-    let lines = vec![
-        kv_line(vec![
-            ("↓", c.hs("network_rx_bytes_per_second", Fmt::Rate)),
-            ("↑", c.hs("network_tx_bytes_per_second", Fmt::Rate)),
-        ]),
+    let mut lines = vec![kv_line(vec![
+        ("↓", c.hs("network_rx_bytes_per_second", Fmt::Rate)),
+        ("↑", c.hs("network_tx_bytes_per_second", Fmt::Rate)),
+    ])];
+    if c.h("fabric_rx_bytes_per_second").is_some() {
+        lines.push(kv_line(vec![
+            ("fabric ↓", c.hs("fabric_rx_bytes_per_second", Fmt::Rate)),
+            ("↑", c.hs("fabric_tx_bytes_per_second", Fmt::Rate)),
+        ]));
+    }
+    lines.extend([
         kv_line(vec![
             ("established", c.hs("tcp_established", Fmt::Count)),
             ("listening", c.hs("sockets_tcp_listening", Fmt::Count)),
@@ -1116,8 +1122,12 @@ pub fn network(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
                 c.hs("udp_in_errors_per_second", Fmt::PerSecond),
             ),
         ]),
-    ];
-    let sum_h = if area.height >= 26 { 5 } else { 0 };
+    ]);
+    let sum_h = if area.height >= 26 {
+        lines.len() as u16 + 2
+    } else {
+        0
+    };
     let wide = area.width >= 140;
     let r = resizable(
         Axis::Vertical,

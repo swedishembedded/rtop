@@ -144,6 +144,27 @@ shows `N/A` because the kernel keeps no byte counters for it.
 
 ![Network view: communication, connections, interfaces](docs/screenshots/network.webp)
 
+On HPE Slingshot nodes the interfaces table adds the NICs' hardware fabric
+counters (`FABRIC ↓/↑`), which include the RDMA traffic the IP counters never
+see, and the summary shows the host's fabric total.
+
+**GPUs.** Every NVIDIA, AMD and Intel GPU with utilisation, memory, power
+against its limit, temperature, clock and P-state. The panel below details
+the GPU under the cursor: load, memory, power, thermal limits, clocks and what
+is limiting them, PCIe, NVLink and chip-to-chip links with NVLink traffic, ECC
+and row remapping, configuration, identity, driver and firmware, beside its
+history. Below that, the processes using GPUs with their SM utilisation and
+memory.
+
+![GPU view: GPUs of this node and of the Slurm job's other nodes, detail of the selected GPU, GPU processes](docs/screenshots/gpu.webp)
+
+**Slurm jobs.** Inside a Slurm job, `c` lists the job's nodes with their
+Slurm state, CPU, load, memory, GPU utilisation and power, and Slingshot
+traffic; their GPUs appear in the GPU view as `<node> #<index> <name>`, with
+full detail (see [Slurm jobs and GPU clusters](#slurm-jobs-and-gpu-clusters)).
+
+![Nodes view: the Slurm job's nodes with GPU and fabric load](docs/screenshots/nodes.webp)
+
 **Containers and services** (`6`). cgroup v2 accounting joined with Docker
 metadata. `WORKSET` values carry `~` because they are estimates; an unlimited
 memory limit is `N/A`, not `0`.
@@ -509,7 +530,7 @@ rtop --stats --strict > snapshot.yaml || echo "incomplete snapshot"
 | Block devices | `/proc/diskstats` | Throughput, IOPS, block-layer latency, queue depth |
 | Filesystems | mountinfo, `statvfs` | Remote mounts queried with a deadline |
 | Disk health | NVMe SMART / Health log, ATA SMART (read-only ioctls, once a minute) | Verdict from the drive's own state, wear, spare, temperature, media errors, reallocated/pending sectors, power-on hours |
-| Network | `/proc/net/dev`, `/proc/net/snmp` | Interface rates, errors, drops; TCP and UDP protocol counters |
+| Network | `/proc/net/dev`, `/proc/net/snmp`, Slingshot CXI telemetry | Interface rates, errors, drops; TCP and UDP protocol counters; fabric traffic including RDMA |
 | Sockets | netlink `sock_diag`, `/proc/PID/fd` | Owners, Unix peers, `tcp_info` byte counters, RTT, retransmits |
 | Containers, services | cgroup v2 | CPU, throttling, memory, working-set estimate, PIDs, I/O |
 | Docker | Engine API over its Unix socket | Names, images, health, restarts, mounts, volumes |

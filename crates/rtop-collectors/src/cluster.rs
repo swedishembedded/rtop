@@ -248,6 +248,11 @@ pub fn slurm_step(fs: &dyn KernelFs, pid: Option<u32>) -> Option<(String, String
     let cg = fs
         .read_string(&format!("/proc/{}/cgroup", pid?), SMALL)
         .ok()?;
+    job_of_cgroup(&cg)
+}
+
+/// `(job, step)` in a `/proc/PID/cgroup` text.
+pub fn job_of_cgroup(cg: &str) -> Option<(String, String)> {
     let mut job = None;
     for part in cg.lines().flat_map(|l| l.split('/')) {
         if let Some(j) = part.strip_prefix("job_") {
@@ -388,6 +393,8 @@ impl std::fmt::Debug for AgentProcess {
 
 /// Access to Slurm and to agents on other nodes.
 pub trait ClusterSource: Send + Sync + std::fmt::Debug {
+    /// The Slurm job this process runs in.
+    fn job(&self) -> Result<String, String>;
     /// Runs `scontrol` with `args`; its standard output.
     fn scontrol(&self, args: &[&str]) -> Result<String, String>;
     /// Starts an agent on `node` of `job` with `gpus` GPUs.
@@ -399,6 +406,9 @@ pub trait ClusterSource: Send + Sync + std::fmt::Debug {
 pub struct NoCluster;
 
 impl ClusterSource for NoCluster {
+    fn job(&self) -> Result<String, String> {
+        Err("not running in a Slurm job".into())
+    }
     fn scontrol(&self, _: &[&str]) -> Result<String, String> {
         Err("no Slurm on a captured or simulated system".into())
     }
@@ -419,6 +429,14 @@ pub struct SlurmCli {
 }
 
 impl ClusterSource for SlurmCli {
+    fn job(&self) -> Result<String, String> {
+        let cg = std::fs::read_to_string("/proc/self/cgroup")
+            .map_err(|e| format!("/proc/self/cgroup: {e}"))?;
+        job_of_cgroup(&cg)
+            .map(|(job, _)| job)
+            .ok_or_else(|| "not running in a Slurm job".into())
+    }
+
     fn scontrol(&self, args: &[&str]) -> Result<String, String> {
         let out = Command::new("scontrol")
             .args(args)
@@ -600,8 +618,7 @@ impl ClusterCollector {
     }
 
     fn discover(&self) -> Result<(String, Vec<String>), String> {
-        let (job, _) = slurm_step(self.env.fs.as_ref(), self.env.self_pid)
-            .ok_or("not running in a Slurm job")?;
+        let job = self.env.cluster.job()?;
         let text = self
             .env
             .cluster
@@ -846,6 +863,9 @@ mod tests {
     }
 
     impl ClusterSource for FakeSlurm {
+        fn job(&self) -> Result<String, String> {
+            Ok("77".into())
+        }
         fn scontrol(&self, args: &[&str]) -> Result<String, String> {
             Ok(match args {
                 ["show", "job", ..] => "JobId=77 NodeList=n[1-3] BatchHost=n1".into(),
@@ -891,13 +911,8 @@ mod tests {
     #[test]
     fn job_nodes_and_remote_gpus_join_the_graph() {
         let fs = rtop_linux::MemoryKernelFs::new();
-        fs.file(
-            "/proc/9/cgroup",
-            "0::/system.slice/slurmstepd.scope/job_77/step_3/user\n",
-        );
         fs.file("/proc/sys/kernel/hostname", "n1\n");
         let mut env = Env::simulated(Arc::new(fs), Arc::new(crate::Subscriptions::default()));
-        env.self_pid = Some(9);
         let slurm = Arc::new(FakeSlurm::default());
         env.cluster = slurm.clone();
         let mut c = ClusterCollector::new(env);
@@ -945,9 +960,7 @@ mod tests {
     #[test]
     fn outside_slurm_the_collector_is_unsupported() {
         let fs = rtop_linux::MemoryKernelFs::new();
-        fs.file("/proc/9/cgroup", "0::/user.slice/session-1.scope\n");
-        let mut env = Env::simulated(Arc::new(fs), Arc::new(crate::Subscriptions::default()));
-        env.self_pid = Some(9);
+        let env = Env::simulated(Arc::new(fs), Arc::new(crate::Subscriptions::default()));
         let e = ClusterCollector::new(env)
             .sample(&SampleContext {
                 now: rtop_core::Timestamp::from_millis(1000),
@@ -955,6 +968,15 @@ mod tests {
             })
             .unwrap_err();
         assert!(format!("{e:?}").contains("not running in a Slurm job"));
+    }
+
+    #[test]
+    fn slurm_jobs_come_from_the_cgroup_path() {
+        assert_eq!(
+            job_of_cgroup("0::/system.slice/slurmstepd.scope/job_77/step_3/user/task_0\n"),
+            Some(("77".into(), "3".into()))
+        );
+        assert_eq!(job_of_cgroup("0::/user.slice/session-1.scope\n"), None);
     }
 
     #[test]

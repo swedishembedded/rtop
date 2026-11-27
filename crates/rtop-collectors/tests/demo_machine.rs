@@ -162,7 +162,13 @@ fn demo_graph_has_connected_workloads() {
     );
 
     // GPUs, sensors, battery, security events.
-    assert_eq!(g.nodes_of(EntityKind::Gpu).count(), 3);
+    // Three local GPUs and four on each of the demo job's two GPU nodes.
+    assert_eq!(g.nodes_of(EntityKind::Gpu).count(), 3 + 8);
+    assert_eq!(g.nodes_of(EntityKind::ClusterNode).count(), 3);
+    let hsn0 = g
+        .node(&EntityId::new(EntityKind::Interface, "hsn0"))
+        .unwrap();
+    assert!(hsn0.f64("fabric_rx_bytes_per_second").unwrap() > 1e9);
     assert!(g.edges_of(EdgeKind::UsesGpu).count() >= 2);
     assert!(g.nodes_of(EntityKind::Sensor).count() >= 5);
     let bat = g.nodes_of(EntityKind::Battery).next().unwrap();

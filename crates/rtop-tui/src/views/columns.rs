@@ -323,6 +323,27 @@ pub fn mounts(g: &SystemGraph) -> Vec<Column<'_>> {
     ]
 }
 
+/// A fabric metric; blank for interfaces that are not fabric NICs.
+fn fabric<'g>(
+    g: &'g SystemGraph,
+    key: &'static str,
+) -> impl Fn(&RowId, usize, usize) -> (String, Style) + 'g {
+    move |r, _, _| match node(g, r).filter(|n| n.metric(key).is_some()) {
+        Some(n) => {
+            let (v, st) = fmt::metric(g, n, key, Fmt::Rate);
+            (
+                v,
+                if st == Style::default() {
+                    Style::default().fg(theme::CYAN)
+                } else {
+                    st
+                },
+            )
+        }
+        None => (String::new(), Style::default()),
+    }
+}
+
 pub fn interfaces(g: &SystemGraph) -> Vec<Column<'_>> {
     vec![
         Column::new("INTERFACE", 10, move |r, _, _| {
@@ -349,6 +370,13 @@ pub fn interfaces(g: &SystemGraph) -> Vec<Column<'_>> {
             .right()
             .sort(SortKey::Net),
         Column::new("TX", 10, m(g, "tx_bytes_per_second", Fmt::Rate)).right(),
+        // Fabric NICs (Slingshot/CXI): all traffic, RDMA included.
+        Column::new("FABRIC ↓", 10, fabric(g, "fabric_rx_bytes_per_second"))
+            .right()
+            .prio(4),
+        Column::new("FABRIC ↑", 10, fabric(g, "fabric_tx_bytes_per_second"))
+            .right()
+            .prio(4),
         Column::new("RX PKT", 8, m(g, "rx_packets_per_second", Fmt::PerSecond))
             .right()
             .prio(2),
@@ -382,6 +410,7 @@ pub fn interfaces(g: &SystemGraph) -> Vec<Column<'_>> {
         Column::new("LINK", 9, move |r, _, _| {
             node(g, r).map_or((String::new(), Style::default()), |n| {
                 match n.f64("link_speed_mbps") {
+                    Some(v) if v >= 1000.0 => (format!("{:.0} Gb/s", v / 1000.0), theme::dim()),
                     Some(v) => (format!("{v:.0} Mb/s"), theme::dim()),
                     None => ("—".into(), theme::faint()),
                 }

@@ -18,6 +18,11 @@ interfaces covered by semantic versioning are the command-line options, the
   fabric traffic. `--no-cluster` and `--cluster-wrapper` control it.
 - Fabric traffic of HPE Slingshot (CXI) NICs, including RDMA, per
   interface and for the host.
+- The network view shows fabric traffic (`FABRIC ↓/↑` per NIC, fabric total
+  in the summary); link speeds of 1 Gb/s and more are shown in Gb/s.
+- The demo machine (`--demo`) has two Slingshot NICs and runs in a simulated
+  Slurm job with two GPU nodes of four demo accelerators each; the README
+  shows the GPU and Nodes views.
 
 - Full NVIDIA GPU detail through NVML: identity (UUID, serial, VBIOS, board
   part, architecture, compute capability, cores, bus width), driver, CUDA and

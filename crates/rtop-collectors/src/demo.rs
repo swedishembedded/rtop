@@ -672,6 +672,8 @@ struct State {
     cg_usage: Vec<f64>,
     rapl_uj: f64,
     gpu_ns: f64,
+    /// Slingshot NIC octets received and sent (hsn0, hsn1).
+    fabric: [[f64; 2]; 2],
     /// (packets, bytes) per demo firewall rule.
     fw: Vec<(f64, f64)>,
 }
@@ -805,6 +807,174 @@ impl rtop_linux::nvml::NvidiaSession for DemoNvidiaSession {
                 error: None,
             }],
         })
+    }
+}
+
+/// The demo machine's Slurm job: itself and two GPU nodes, whose agents
+/// stream four demo accelerators each and Slingshot traffic.
+#[derive(Debug)]
+pub struct DemoCluster {
+    state: Arc<Mutex<State>>,
+}
+
+const DEMO_GPU_NODES: [&str; 2] = ["demo-gpu1", "demo-gpu2"];
+
+const DEMO_NODES: &str = "\
+NodeName=demo-host CPUTot=16 CPUAlloc=8 CPULoad=4.02 Gres=gpu:demo:1 RealMemory=31744 AllocMem=16384 FreeMem=15700 State=MIXED Partitions=gpu AllocTRES=cpu=8,mem=16G,gres/gpu=1
+NodeName=demo-gpu1 CPUTot=288 CPUAlloc=288 CPULoad=61.30 Gres=gpu:demo:4(S:0-3) RealMemory=485854 AllocMem=420192 FreeMem=150123 State=ALLOCATED Partitions=gpu AllocTRES=cpu=288,mem=420192M,gres/gpu=4
+NodeName=demo-gpu2 CPUTot=288 CPUAlloc=288 CPULoad=58.75 Gres=gpu:demo:4(S:0-3) RealMemory=485854 AllocMem=420192 FreeMem=162410 State=ALLOCATED Partitions=gpu AllocTRES=cpu=288,mem=420192M,gres/gpu=4
+";
+
+impl crate::cluster::ClusterSource for DemoCluster {
+    fn job(&self) -> Result<String, String> {
+        Ok("4242".into())
+    }
+
+    fn scontrol(&self, args: &[&str]) -> Result<String, String> {
+        match args {
+            ["show", "job", ..] => {
+                Ok("JobId=4242 JobName=train NodeList=demo-host,demo-gpu[1-2]".into())
+            }
+            ["show", "node", ..] => Ok(DEMO_NODES.into()),
+            _ => Err("unsupported scontrol call in the demo".into()),
+        }
+    }
+
+    fn launch(
+        &self,
+        _job: &str,
+        node: &str,
+        _gpus: u64,
+    ) -> Result<crate::cluster::AgentProcess, String> {
+        let n = DEMO_GPU_NODES
+            .iter()
+            .position(|d| *d == node)
+            .ok_or_else(|| format!("srun: error: invalid node name {node}"))?;
+        Ok(crate::cluster::AgentProcess {
+            lines: Box::new(std::io::BufReader::new(DemoAgent {
+                state: Arc::downgrade(&self.state),
+                node: n,
+                lines: 0,
+                pending: Vec::new(),
+            })),
+            child: None,
+            errors: None,
+        })
+    }
+}
+
+/// An agent of a demo GPU node: one report per line, the first two at once
+/// (so rates are ready), then one every half second while the demo
+/// machine exists.
+struct DemoAgent {
+    state: std::sync::Weak<Mutex<State>>,
+    node: usize,
+    lines: u64,
+    pending: Vec<u8>,
+}
+
+impl DemoAgent {
+    fn report(&self, t: f64) -> String {
+        use rtop_core::{
+            CollectorId, EntityId, EntityKind, GraphPatch, Metric, NodeUpdate, Timestamp,
+        };
+        let n = self.node as f64;
+        let wave = |f: f64, ph: f64| (t * f + ph + n * 1.7).sin();
+        let mut g = rtop_core::SystemGraph::default();
+        let mut p = GraphPatch::new(CollectorId("demo-agent"), 1, Timestamp::from_millis(1));
+        p.node(
+            NodeUpdate::new(EntityKind::Host, EntityId::host())
+                .metric(
+                    "cpu_usage_percent",
+                    Metric::f64(21.0 + 6.0 * wave(0.3, 0.0)),
+                )
+                .metric("load_1", Metric::f64(60.0 + 3.0 * wave(0.1, 0.0)))
+                .metric("memory_total_bytes", Metric::u64(474 * GIB))
+                .metric(
+                    "memory_used_bytes",
+                    Metric::u64((301 + 12 * self.node as u64) * GIB),
+                )
+                .metric(
+                    "fabric_rx_bytes_per_second",
+                    Metric::f64(18.2e9 + 2.1e9 * wave(0.6, 0.0)),
+                )
+                .metric(
+                    "fabric_tx_bytes_per_second",
+                    Metric::f64(17.6e9 + 2.0e9 * wave(0.6, 1.0)),
+                ),
+        );
+        for i in 0..4u32 {
+            let k = f64::from(i);
+            let busy = (88.0 + 10.0 * wave(0.5, k)).clamp(0.0, 100.0).round();
+            p.node(
+                NodeUpdate::new(
+                    EntityKind::Gpu,
+                    EntityId::new(EntityKind::Gpu, format!("000{i}:01:00.0")),
+                )
+                .text("name", "Demo Accelerator 96GB")
+                .attr("vendor", "NVIDIA")
+                .attr("driver", "nvidia")
+                .attr("provider", "nvml")
+                .attr("index", i)
+                .attr("architecture", "Hopper")
+                .attr("performance_state", "P0")
+                .attr("clock_event_reasons", "sw_power_cap")
+                .attr("ecc_mode", true)
+                .metric("gpu_usage_percent", Metric::f64(busy))
+                .metric("memory_busy_percent", Metric::f64((busy * 0.4).round()))
+                .metric("vram_total_bytes", Metric::u64(96 * GIB))
+                .metric(
+                    "vram_used_bytes",
+                    Metric::u64((71 + 3 * u64::from(i)) * GIB),
+                )
+                .metric(
+                    "temperature_celsius",
+                    Metric::f64((52.0 + 3.0 * wave(0.2, k)).round()),
+                )
+                .metric("temperature_slowdown_celsius", Metric::f64(89.0))
+                .metric(
+                    "power_w",
+                    Metric::f64((480.0 + 40.0 * wave(0.4, k)).round()),
+                )
+                .metric("power_limit_w", Metric::f64(700.0))
+                .metric("frequency_mhz", Metric::f64(1755.0))
+                .metric("frequency_max_mhz", Metric::f64(1980.0))
+                .metric("nvlink_links", Metric::u64(18))
+                .metric("nvlink_links_active", Metric::u64(18))
+                .metric(
+                    "nvlink_tx_bytes_per_second",
+                    Metric::f64(112e9 + 9e9 * wave(0.7, k)),
+                )
+                .metric(
+                    "nvlink_rx_bytes_per_second",
+                    Metric::f64(109e9 + 9e9 * wave(0.7, k + 1.0)),
+                ),
+            );
+        }
+        g.apply(p);
+        crate::cluster::encode_report(&g, DEMO_GPU_NODES[self.node]) + "\n"
+    }
+}
+
+impl std::io::Read for DemoAgent {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.pending.is_empty() {
+            if self.lines >= 2 {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+            // The stream ends with the demo machine.
+            let Some(state) = self.state.upgrade() else {
+                return Ok(0);
+            };
+            let t = state.lock().unwrap_or_else(|p| p.into_inner()).t;
+            drop(state);
+            self.lines += 1;
+            self.pending = self.report(t).into_bytes();
+        }
+        let n = buf.len().min(self.pending.len());
+        buf[..n].copy_from_slice(&self.pending[..n]);
+        self.pending.drain(..n);
+        Ok(n)
     }
 }
 
@@ -1075,6 +1245,7 @@ impl DemoMachine {
             cg_usage: vec![0.0; 16],
             rapl_uj: 0.0,
             gpu_ns: 0.0,
+            fabric: [[4.1e13, 3.7e13], [2.2e13, 2.0e13]],
             fw: vec![
                 (2.8e5, 1.8e7),
                 (1.2e3, 9.0e4),
@@ -1104,6 +1275,9 @@ impl DemoMachine {
         });
         env.disk_health = Arc::new(DemoDiskHealth);
         env.nvidia = Arc::new(DemoNvidia {
+            state: self.state.clone(),
+        });
+        env.cluster = Arc::new(DemoCluster {
             state: self.state.clone(),
         });
         env.firewall = Arc::new(DemoFirewall {
@@ -1210,6 +1384,11 @@ impl DemoMachine {
             }
             s.rapl_uj += 18.5e6 * dt * (1.0 + 0.2 * (t * 0.6).sin());
             s.gpu_ns += 0.34e9 * dt;
+            for (i, rate) in [[9.4e9, 8.1e9], [3.2e9, 2.9e9]].iter().enumerate() {
+                for d in 0..2 {
+                    s.fabric[i][d] += rate[d] * dt * (1.0 + 0.3 * (t * 0.6 + (i + d) as f64).sin());
+                }
+            }
             for (i, rate) in FW_RATES.iter().enumerate() {
                 let r = rate * (1.0 + 0.4 * (t * 0.7 + i as f64).sin());
                 s.fw[i].0 += r * dt;
@@ -1367,6 +1546,8 @@ impl DemoMachine {
             ("wlan0", true, 1200, true),
             ("eth0", true, 1000, false),
             ("docker0", false, -1, false),
+            ("hsn0", true, 200_000, false),
+            ("hsn1", true, 200_000, false),
         ] {
             let base = format!("/sys/class/net/{name}");
             fs.file(
@@ -1384,6 +1565,14 @@ impl DemoMachine {
             if wireless {
                 fs.dir(&format!("{base}/wireless"));
             }
+        }
+        // HPE Slingshot (CXI) NICs with hardware telemetry.
+        for (name, pci) in [("hsn0", "0002:01:00.0"), ("hsn1", "0003:01:00.0")] {
+            let dev = format!("/sys/class/net/{name}/device");
+            fs.link(&dev, &format!("../../../{pci}"));
+            fs.file(&format!("{dev}/port/link"), "up\n");
+            fs.file(&format!("{dev}/port/speed"), "BS_200G\n");
+            fs.file(&format!("/sys/class/net/{name}/mtu"), "9000\n");
         }
         fs.file("/proc/net/snmp", "Tcp: RtoAlgorithm RtoMin RtoMax MaxConn ActiveOpens PassiveOpens AttemptFails EstabResets CurrEstab InSegs OutSegs RetransSegs InErrs OutRsts\nTcp: 1 200 120000 -1 1500 900 12 30 11 900000 880000 140 0 60\nUdp: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors\nUdp: 40000 12 0 39000 0 0\n");
         // cgroups.
@@ -1753,6 +1942,18 @@ impl DemoMachine {
             format!("{:.0}\n", 14_100_000.0 + 1_500_000.0 * wave(0.3, 0.0)),
         );
         fs.file("/sys/class/power_supply/BAT0/voltage_now", "16420000\n");
+        for (i, name) in ["hsn0", "hsn1"].iter().enumerate() {
+            let tele = format!("/sys/class/net/{name}/device/telemetry");
+            for (d, f) in ["hni_sts_rx_ok_octets", "hni_sts_tx_ok_octets"]
+                .iter()
+                .enumerate()
+            {
+                fs.file(
+                    &format!("{tele}/{f}"),
+                    format!("{:.0}@{:.9}\n", s.fabric[i][d], 1.7e9 + t),
+                );
+            }
+        }
         fs.file(
             "/sys/class/drm/card0/gt_act_freq_mhz",
             format!("{:.0}\n", 900.0 + 300.0 * wave(0.3, 0.0)),
@@ -1879,7 +2080,7 @@ fn net_dev_text(s: &State, pid: u32) -> String {
         "Inter-|   Receive                                                |  Transmit\n face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n",
     );
     let names = if pid == 0 {
-        vec!["wlan0", "eth0", "lo", "docker0"]
+        vec!["wlan0", "eth0", "lo", "docker0", "hsn0", "hsn1"]
     } else if [1230, 1320, 1420].contains(&pid) {
         vec!["lo", "eth0"]
     } else {
