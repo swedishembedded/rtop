@@ -8,6 +8,14 @@ interfaces covered by semantic versioning are the command-line options, the
 
 ## [Unreleased]
 
+### Added
+
+- `make test/leak` runs the heap-growth test in a release build.
+
+### Changed
+
+- `make test` no longer runs the multi-minute heap-growth test.
+
 ## [1.2.0] - 2026-11-25
 
 ### Added

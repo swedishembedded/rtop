@@ -41,6 +41,7 @@ unsafe impl GlobalAlloc for Counting {
 static A: Counting = Counting;
 
 #[test]
+#[ignore = "minutes in a debug build; run optimised with `make test/leak`"]
 fn live_heap_is_flat_over_thousands_of_interaction_cycles() {
     let m = DemoMachine::new();
     let mut cs: Vec<Box<dyn Collector>> = m.collectors(&m.env(Subscriptions::all()));

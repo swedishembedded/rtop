@@ -26,14 +26,14 @@ TAG     := v$(VERSION)
 ARCH    := $(shell uname -m)
 DIST_NAME := rtop-$(VERSION)-$(ARCH)-linux
 # Release bumps run these first; `make release/patch RELEASE_TESTS=` skips.
-RELEASE_TESTS ?= check test
+RELEASE_TESTS ?= check test test/leak
 
 # A target is `make <concept>/<subconcept>/<action>`; `make help` prints
 # every target from the `## ` doc lines below.
 
 .DEFAULT_GOAL := build
 .PHONY: all build build/debug build/release install uninstall run run/stats \
-	test test/unit test/e2e test/performance test/soak test/fuzz check check/fmt check/clippy check/doc check/privacy check/audit \
+	test test/unit test/e2e test/leak test/performance test/soak test/fuzz check check/fmt check/clippy check/doc check/privacy check/audit \
 	fmt shots package/dist release release/patch release/minor release/major \
 	_release clean help
 
@@ -84,6 +84,10 @@ test/unit:
 ## test/e2e - CLI and PTY end-to-end tests (signals only test-owned child processes)
 test/e2e:
 	$(CARGO) test $(CARGO_FLAGS) --workspace --test '*'
+
+## test/leak - live heap stays flat over thousands of UI cycles (release build, ~20 s)
+test/leak:
+	$(CARGO) test $(CARGO_FLAGS) --release -p rtop-tui --test leak -- --ignored --nocapture
 
 ## test/performance - performance and scale budgets (release build; see crates/rtop-tui/tests/performance.rs)
 test/performance:

@@ -546,6 +546,7 @@ make check       # formatting, clippy and rustdoc with warnings as errors, priva
 make test        # test/unit and test/e2e
 make test/unit   # unit, property and UI snapshot tests
 make test/e2e    # CLI and PTY end-to-end tests
+make test/leak   # release build: live heap stays flat over thousands of UI cycles
 make check/audit # RustSec advisory scan of Cargo.lock
 make test/performance  # release-build performance, scale and kill-latency budgets
 make test/soak   # drive the UI for SOAK_SECONDS; memory and CPU must stay flat
