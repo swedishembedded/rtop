@@ -394,7 +394,9 @@ mod tests {
         let Ok(socks) = socks else { return }; // netlink unavailable in this sandbox
         let client = socks
             .iter()
-            .find(|x| x.local == c.local_addr().unwrap())
+            // Local and remote: a reused local port may also belong to an
+            // older connection in TIME_WAIT on a busy machine.
+            .find(|x| x.local == c.local_addr().unwrap() && x.remote == c.peer_addr().unwrap())
             .expect("client socket");
         assert_eq!(client.state, 1);
         let acked = client
