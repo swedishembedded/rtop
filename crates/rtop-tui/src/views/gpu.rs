@@ -556,6 +556,7 @@ fn sections(g: &SystemGraph, n: &Node) -> Vec<Section> {
     d.text("MIG", "mig_mode");
     d.section("Configuration");
 
+    d.text("node", "node");
     d.text("index", "index");
     d.text("brand", "brand");
     d.text("architecture", "architecture");

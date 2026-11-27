@@ -112,6 +112,7 @@ bindings! {
     ['7'] => Cmd::View(View::Gpu), "Views", "GPUs and accelerators";
     ['8'] => Cmd::View(View::Security), "Views", "Security, events and telemetry health";
     ['9'] => Cmd::View(View::Sensors), "Views", "Sensors and power";
+    ['c'] => Cmd::View(View::Nodes), "Views", "Nodes of the Slurm job (inside a Slurm job)";
     ['j'] => Cmd::Down, "Move", "Down";
     [Down] => Cmd::Down, "Move", "Down";
     ['k'] => Cmd::Up, "Move", "Up";

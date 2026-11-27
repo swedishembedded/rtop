@@ -26,7 +26,7 @@ With \-\-stats, print JSON instead of YAML.
 Rate measurement window (default 1s; e.g. 500ms, 2s).
 .TP
 .BI \-\-timeout " DURATION"
-Upper bound on \-\-stats collection; unanswered sources are reported as timed out (default 5s).
+Upper bound on \-\-stats collection; unanswered sources are reported as timed out (default 10s).
 .TP
 .B \-\-strict
 With \-\-stats, exit with status 2 if any collector did not deliver.
@@ -42,8 +42,15 @@ Disable every process action.
 .TP
 .B \-\-no\-mouse
 Do not capture the mouse.
+.TP
+.B \-\-no\-cluster
+Inside a Slurm job, do not start agents on the job's other nodes.
+.TP
+.BI \-\-cluster\-wrapper " WORDS"
+Run the agents on other nodes through a launcher, e.g.
+\fBapptainer exec \-\-nv\fR \fIimage.sif\fR.
 .SH KEYS
-\fB0\fR\-\fB9\fR views, \fBhjkl\fR move, \fBgg\fR/\fBG\fR first/last, \fB/\fR \fB?\fR search,
+\fB0\fR\-\fB9\fR views, \fBc\fR Slurm job nodes, \fBhjkl\fR move, \fBgg\fR/\fBG\fR first/last, \fB/\fR \fB?\fR search,
 \fBF\fR filter, \fBEnter\fR inspect, \fBEsc\fR back, \fBs\fR\fIx\fR sort, \fBx\fR terminate,
 \fBX\fR force kill, \fBgs\fR signal menu, \fBgp\fR/\fBgr\fR suspend/resume, \fB!\fR emergency mode,
 \fB:\fR command line, \fBF1\fR help, \fBq\fR quit.

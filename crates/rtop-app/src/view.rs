@@ -6,7 +6,8 @@
 
 use rtop_core::{EdgeKey, EntityId};
 
-/// The ten global views, selected with `0`–`9`.
+/// The ten global views, selected with `0`–`9`, and the Slurm job's nodes
+/// (`c`), shown only inside a Slurm job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum View {
     Overview,
@@ -19,6 +20,7 @@ pub enum View {
     Gpu,
     Security,
     Sensors,
+    Nodes,
 }
 
 impl View {
@@ -35,8 +37,20 @@ impl View {
         View::Sensors,
     ];
 
+    /// Position among the digit views; the Nodes view has none.
     pub fn index(self) -> usize {
-        View::ALL.iter().position(|v| *v == self).expect("listed")
+        View::ALL
+            .iter()
+            .position(|v| *v == self)
+            .unwrap_or(View::ALL.len())
+    }
+
+    /// The key that selects the view, as shown on its tab.
+    pub fn key(self) -> char {
+        match self {
+            View::Nodes => 'c',
+            v => char::from_digit(v.index() as u32, 10).unwrap_or('?'),
+        }
     }
 
     pub fn from_digit(d: u32) -> Option<View> {
@@ -55,6 +69,7 @@ impl View {
             View::Gpu => "GPU",
             View::Security => "Security",
             View::Sensors => "Sensors",
+            View::Nodes => "Nodes",
         }
     }
 
@@ -71,6 +86,7 @@ impl View {
             View::Gpu => "GPU",
             View::Security => "Sec",
             View::Sensors => "Sens",
+            View::Nodes => "Node",
         }
     }
 
@@ -81,6 +97,7 @@ impl View {
         }
         View::ALL
             .into_iter()
+            .chain([View::Nodes])
             .find(|v| v.title().to_ascii_lowercase().starts_with(&s))
     }
 
@@ -97,6 +114,7 @@ impl View {
             View::Gpu => &[Panel::Gpus, Panel::GpuClients],
             View::Security => &[Panel::Events, Panel::Firewall, Panel::Collectors],
             View::Sensors => &[Panel::Sensors, Panel::Batteries],
+            View::Nodes => &[Panel::ClusterNodes, Panel::Gpus],
         }
     }
 
@@ -107,6 +125,7 @@ impl View {
             View::Storage => SortKey::Io,
             View::Network => SortKey::Net,
             View::Gpu => SortKey::Gpu,
+            View::Nodes => SortKey::Name,
             _ => SortKey::Cpu,
         }
     }
@@ -126,6 +145,7 @@ pub enum Panel {
     Services,
     Gpus,
     GpuClients,
+    ClusterNodes,
     Sensors,
     Batteries,
     Events,
@@ -149,6 +169,7 @@ impl Panel {
             Panel::Services => "Services",
             Panel::Gpus => "GPUs & accelerators",
             Panel::GpuClients => "GPU processes",
+            Panel::ClusterNodes => "Slurm job nodes",
             Panel::Sensors => "Sensors",
             Panel::Batteries => "Power",
             Panel::Events => "Security & kernel events",
@@ -172,6 +193,7 @@ impl Panel {
             Panel::Containers | Panel::Services => &[Cpu, Mem, Io, Net, Name],
             Panel::Gpus => &[Gpu, Mem, Name],
             Panel::GpuClients => &[Gpu, Mem, Name],
+            Panel::ClusterNodes => &[Name, Gpu, Cpu, Mem],
             Panel::Sensors => &[Name, Value],
             Panel::Firewall => &[Net, Name],
             Panel::Batteries | Panel::Events | Panel::Collectors | Panel::Relations => &[Name],

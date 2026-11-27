@@ -1292,5 +1292,6 @@ pub fn body(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
         View::Gpu => gpu::view(f, area, c, hits),
         View::Security => security(f, area, c, hits),
         View::Sensors => generic(f, area, c, hits, 60, SplitId("sensors.tables")),
+        View::Nodes => generic(f, area, c, hits, 40, SplitId("nodes.tables")),
     }
 }

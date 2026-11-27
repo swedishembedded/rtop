@@ -32,6 +32,7 @@ collectors ── GraphPatch ──▶ runtime ──▶ graph owner (event loop
 | pidfd for every destructive action | The pidfd pins one process; its start time is verified through it, so PID reuse cannot redirect a signal. Without pidfd support, destructive actions are disabled rather than racy. |
 | Explicit availability | `0` is a measurement. Unknown is `N/A` with a reason, first samples are pending, values from stalled collectors are marked stale, heuristics estimated. |
 | Hand-written YAML/JSON emitters from one document tree | Identical content in both formats, deterministic order, no unmaintained YAML dependency. |
+| One `rtop --agent` per other Slurm node, as an overlapping step on srun's stdio | GPUs can only be read where their device nodes may be opened; a persistent agent costs one step per node per session, needs no daemon, port or credentials beyond munge, and ends with rtop's stdin. `srun` per sample would create a step record every second. |
 | Demo machine as a `MemoryKernelFs` | Tests, screenshots and `--demo` run the real collectors against invented data; nothing committed describes a real system. |
 
 ## Invariants

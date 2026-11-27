@@ -35,7 +35,7 @@ struct Cli {
     #[arg(long, default_value = "1s", value_parser = parse_duration)]
     interval: Duration,
     /// Upper bound on --stats collection time.
-    #[arg(long, default_value = "5s", value_parser = parse_duration)]
+    #[arg(long, default_value = "10s", value_parser = parse_duration)]
     timeout: Duration,
     /// With --stats: exit with status 2 when any collector did not deliver.
     #[arg(long, requires = "stats")]
@@ -52,6 +52,18 @@ struct Cli {
     /// Monitoring only: disable every process action.
     #[arg(long)]
     read_only: bool,
+    /// Inside a Slurm job, do not start agents on the job's other nodes.
+    #[arg(long)]
+    no_cluster: bool,
+    /// Command words that run rtop on another node inside srun, e.g.
+    /// "apptainer exec --nv image.sif" when rtop lives in a container.
+    #[arg(long, value_name = "WORDS")]
+    cluster_wrapper: Option<String>,
+    /// Stream this node's host and GPU telemetry as one JSON line per
+    /// --interval on stdout until stdin closes (started by rtop itself on
+    /// the other nodes of a Slurm job).
+    #[arg(long, hide = true, conflicts_with_all = ["stats", "demo", "sysroot"])]
+    agent: bool,
 }
 
 /// Process actions on the simulated machine: terminating signals remove the
@@ -189,7 +201,25 @@ fn target(cli: &Cli, subscriptions: Arc<Subscriptions>) -> Target {
             Arc::new(rtop_linux::RealKernelFs::rooted(root)),
             subscriptions,
         ),
-        None => Env::live(subscriptions),
+        None => {
+            let mut env = Env::live(subscriptions);
+            if !cli.no_cluster
+                && let Ok(exe) = std::env::current_exe()
+            {
+                env.cluster = Arc::new(rtop_collectors::cluster::SlurmCli {
+                    exe,
+                    wrapper: cli
+                        .cluster_wrapper
+                        .as_deref()
+                        .unwrap_or_default()
+                        .split_whitespace()
+                        .map(str::to_owned)
+                        .collect(),
+                    interval: cli.interval,
+                });
+            }
+            env
+        }
     };
     Target {
         collectors: rtop_collectors::all(&env),
@@ -252,8 +282,57 @@ fn stats(cli: &Cli) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// `rtop --agent`: this node's host and GPU telemetry, one JSON line per
+/// interval, for the rtop that started it through srun.
+fn agent(cli: &Cli) -> ExitCode {
+    use rtop_runtime::Runtime;
+    // The parent closing our stdin (or exiting) ends the agent.
+    std::thread::spawn(|| {
+        let _ = io::copy(&mut io::stdin().lock(), &mut io::sink());
+        std::process::exit(0);
+    });
+    let subscriptions = Subscriptions::all();
+    let env = Env::live(subscriptions);
+    let mut rt = Runtime::start(
+        rtop_collectors::agent(&env),
+        Arc::new(MonotonicClock::new()),
+    );
+    let mut graph = rtop_core::SystemGraph::default();
+    let host = std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .map(|h| h.trim().to_owned())
+        .unwrap_or_default();
+    let interval = cli.interval.max(Duration::from_millis(100));
+    let mut next = std::time::Instant::now() + interval;
+    let stdout = io::stdout();
+    loop {
+        for (id, st) in rt.dispatch() {
+            graph.set_collector_status(id, st);
+        }
+        let left = next.saturating_duration_since(std::time::Instant::now());
+        let wait = rt.next_deadline().min(left).max(Duration::from_millis(5));
+        if let Ok(c) = rt.completions().recv_timeout(wait) {
+            let a = rt.complete(c);
+            Runtime::apply(&mut graph, a);
+        }
+        if std::time::Instant::now() >= next {
+            next += interval;
+            let mut out = stdout.lock();
+            if let Err(e) = rtop_collectors::cluster::write_report(&mut out, &graph, &host) {
+                if e.kind() == io::ErrorKind::BrokenPipe {
+                    return ExitCode::SUCCESS;
+                }
+                eprintln!("rtop --agent: {e}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    if cli.agent {
+        return agent(&cli);
+    }
     if cli.stats {
         return stats(&cli);
     }

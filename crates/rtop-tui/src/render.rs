@@ -68,14 +68,24 @@ fn header(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
         .unwrap_or("?")
         .to_owned();
     let mut x = area.x + 7;
-    let tabs_w: usize = View::ALL.iter().map(|v| v.title().len() + 4).sum();
+    // The Nodes tab exists only inside a Slurm job (or while it is open).
+    let cluster =
+        c.g.nodes_of(rtop_core::EntityKind::ClusterNode)
+            .next()
+            .is_some()
+            || s.location.view == View::Nodes;
+    let views: Vec<View> = View::ALL
+        .into_iter()
+        .chain(cluster.then_some(View::Nodes))
+        .collect();
+    let tabs_w: usize = views.iter().map(|v| v.title().len() + 4).sum();
     // Host name, uptime and the LIVE/PAUSED/EMERGENCY badge must always
     // stay visible: fall back to digit-only tabs when they would not fit.
     let up_w = c
         .h("uptime_seconds")
         .map_or(0, |u| format_duration_secs(u).len() + 4);
     let right_need = host.width() + 1 + up_w + 12;
-    let short_w: usize = View::ALL.iter().map(|v| v.short().len() + 4).sum();
+    let short_w: usize = views.iter().map(|v| v.short().len() + 4).sum();
     let (full, short) = (
         (area.width as usize) >= 7 + tabs_w + right_need,
         (area.width as usize) >= 7 + short_w + right_need,
@@ -107,14 +117,14 @@ fn header(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
         spans.push(Span::styled(label, theme::title()));
         let _ = x;
     } else {
-        for v in View::ALL {
+        for v in views {
             let active = v == s.location.view;
             let label = if full {
-                format!("{} {}", v.index(), v.title())
+                format!("{} {}", v.key(), v.title())
             } else if short {
-                format!("{} {}", v.index(), v.short())
+                format!("{} {}", v.key(), v.short())
             } else {
-                format!("{}", v.index())
+                format!("{}", v.key())
             };
             let w = label.width() as u16 + 2;
             let st = if active {

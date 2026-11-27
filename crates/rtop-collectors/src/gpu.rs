@@ -267,7 +267,7 @@ impl Collector for GpuCollector {
                     "this process may open {} of {total} NVIDIA GPUs ({}){}",
                     total - denied.len(),
                     denied.join(", "),
-                    slurm_step(fs.as_ref(), self.env.self_pid).map_or_else(
+                    crate::cluster::slurm_step(fs.as_ref(), self.env.self_pid).map_or_else(
                         || "; the device cgroup or container does not grant the others".into(),
                         |(job, step)| format!(
                             "; Slurm job {job} step {step} was granted fewer GPUs: \
@@ -492,23 +492,6 @@ fn procfs_minor(info: &str) -> Option<u32> {
                 .filter(|(k, _)| k.trim() == "Device Minor")
         })
         .and_then(|(_, v)| v.trim().parse().ok())
-}
-
-/// `(job, step)` of the Slurm step process `pid` runs in, from its cgroup
-/// path (`…/job_<id>/step_<name>/…`).
-fn slurm_step(fs: &dyn KernelFs, pid: Option<u32>) -> Option<(String, String)> {
-    let cg = fs
-        .read_string(&format!("/proc/{}/cgroup", pid?), SMALL)
-        .ok()?;
-    let mut job = None;
-    for part in cg.lines().flat_map(|l| l.split('/')) {
-        if let Some(j) = part.strip_prefix("job_") {
-            job = Some(j.to_owned());
-        } else if let (Some(j), Some(st)) = (&job, part.strip_prefix("step_")) {
-            return Some((j.clone(), st.to_owned()));
-        }
-    }
-    None
 }
 
 /// An NVIDIA GPU known only from `/proc/driver/nvidia/gpus/*/information`:

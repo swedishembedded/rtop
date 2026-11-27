@@ -29,6 +29,7 @@ use rtop_linux::sockdiag::SockDiag;
 use rtop_linux::{KernelError, KernelFs};
 
 pub mod cgroups;
+pub mod cluster;
 pub mod cpu;
 pub mod demo;
 pub mod docker;
@@ -172,6 +173,8 @@ pub struct Env {
     pub firewall: Arc<dyn rtop_linux::nftables::FirewallSource>,
     pub disk_health: Arc<dyn rtop_linux::disk_health::DiskHealthSource>,
     pub nvidia: Arc<dyn rtop_linux::nvml::NvidiaProvider>,
+    /// Slurm and the agents on the job's other nodes.
+    pub cluster: Arc<dyn cluster::ClusterSource>,
     pub subscriptions: Arc<Subscriptions>,
     /// `USER_HZ` of the observed system.
     pub clock_ticks: u64,
@@ -191,6 +194,7 @@ impl Env {
             firewall: Arc::new(rtop_linux::nftables::Nftables::default()),
             disk_health: Arc::new(rtop_linux::disk_health::DeviceHealth),
             nvidia: Arc::new(rtop_linux::nvml::Nvml),
+            cluster: Arc::new(cluster::NoCluster),
             fs,
             subscriptions,
             clock_ticks: rtop_linux::sys::clock_ticks(),
@@ -212,6 +216,7 @@ impl Env {
             firewall: Arc::new(rtop_linux::nftables::NoFirewall),
             disk_health: Arc::new(rtop_linux::disk_health::NoDiskHealth),
             nvidia: Arc::new(rtop_linux::nvml::NoNvidia),
+            cluster: Arc::new(cluster::NoCluster),
             fs,
             subscriptions,
             clock_ticks: 100,
@@ -241,7 +246,19 @@ pub fn all(env: &Env) -> Vec<Box<dyn Collector>> {
         Box::new(gpu::GpuCollector::new(env.clone())),
         Box::new(security::SecurityCollector::new(env.clone())),
         Box::new(firewall::FirewallCollector::new(env.clone())),
+        Box::new(cluster::ClusterCollector::new(env.clone())),
         Box::new(monitor::MonitorCollector::new(env.clone())),
+    ]
+}
+
+/// What an `rtop --agent` samples for the node it runs on.
+pub fn agent(env: &Env) -> Vec<Box<dyn Collector>> {
+    vec![
+        Box::new(host::HostCollector::new(env.clone())),
+        Box::new(cpu::CpuCollector::new(env.clone())),
+        Box::new(memory::MemoryCollector::new(env.clone())),
+        Box::new(network::NetworkCollector::new(env.clone())),
+        Box::new(gpu::GpuCollector::new(env.clone())),
     ]
 }
 

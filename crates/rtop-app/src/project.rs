@@ -247,6 +247,7 @@ pub fn project(g: &SystemGraph, t: &TableState, ctx: ProjectionContext<'_>) -> R
         Panel::Services => Rows::flat(sorted_nodes(g, EntityKind::Service, t)),
         Panel::Gpus => Rows::flat(sorted_nodes(g, EntityKind::Gpu, t)),
         Panel::GpuClients => Rows::flat(sorted(g, edges(g, EdgeKind::UsesGpu, f), t)),
+        Panel::ClusterNodes => Rows::flat(sorted_nodes(g, EntityKind::ClusterNode, t)),
         Panel::Sensors => Rows::flat(sorted_nodes(g, EntityKind::Sensor, t)),
         Panel::Firewall => Rows::flat(sorted_nodes(g, EntityKind::FirewallRule, t)),
         Panel::Batteries => {
@@ -314,11 +315,20 @@ pub fn label_of(g: &SystemGraph, id: &EntityId) -> String {
     match g.node(id) {
         Some(n) => match n.attr("pid").and_then(|p| p.as_u64()) {
             Some(pid) => format!("{} ({pid})", n.label()),
-            // Identical GPUs are told apart by their driver index.
-            None => match n.attr("index").and_then(|i| i.as_u64()) {
-                Some(i) if id.kind() == Some(EntityKind::Gpu) => format!("#{i} {}", n.label()),
-                _ => n.label().to_owned(),
-            },
+            // Identical GPUs are told apart by their node and driver index.
+            None if id.kind() == Some(EntityKind::Gpu) => {
+                let mut l = String::new();
+                if let Some(node) = n.text("node") {
+                    l.push_str(node);
+                    l.push(' ');
+                }
+                if let Some(i) = n.attr("index").and_then(|i| i.as_u64()) {
+                    l.push_str(&format!("#{i} "));
+                }
+                l.push_str(n.label());
+                l
+            }
+            None => n.label().to_owned(),
         },
         None => id.to_string(),
     }

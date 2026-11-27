@@ -85,6 +85,23 @@ impl Unavailable {
         }
     }
 
+    /// Inverse of [`Unavailable::as_str`].
+    pub fn parse(s: &str) -> Option<Self> {
+        const ALL: [Unavailable; 10] = [
+            Unavailable::Pending,
+            Unavailable::PermissionDenied,
+            Unavailable::Unsupported,
+            Unavailable::Disabled,
+            Unavailable::NotCollected,
+            Unavailable::NotMeasurable,
+            Unavailable::InvalidData,
+            Unavailable::Removed,
+            Unavailable::TimedOut,
+            Unavailable::CounterReset,
+        ];
+        ALL.into_iter().find(|u| u.as_str() == s)
+    }
+
     /// Short label for table cells (`N/A (perm)` style).
     pub fn short(self) -> &'static str {
         match self {

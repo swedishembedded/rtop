@@ -229,6 +229,7 @@ process removes it from the simulation and sends no real signal.
 | `7` | GPUs and accelerators |
 | `8` | Security, events and telemetry health |
 | `9` | Sensors and power |
+| `c` | Nodes of the Slurm job (the tab appears only inside a Slurm job) |
 
 **Move**
 
@@ -341,6 +342,37 @@ Resized panes keep their proportions when the terminal is resized. Apart
 from resizing, mouse input produces the same commands as the keyboard. Start with
 `--no-mouse` to leave the mouse to the terminal.
 
+## Slurm jobs and GPU clusters
+
+When rtop runs inside a Slurm job (found from its own cgroup,
+`…/job_<id>/step_<name>/`), it lists the job's nodes and starts one
+`rtop --agent` on each other node as an overlapping step:
+
+```
+srun --jobid=<job> --overlap --nodes=1 --ntasks=1 --nodelist=<node> --gres=gpu:<n> <rtop> --agent
+```
+
+The agent streams that node's host, GPU (full NVML detail, NVLink) and
+fabric telemetry as one JSON line per `--interval`; it ends when rtop closes
+its stdin or exits, so each rtop session costs one job step per other node.
+Remote GPUs join the GPU view as `<node> #<index> <name>`, and the Nodes view
+(`c`) shows every node's Slurm state, CPU, load, memory, GPU utilisation and
+power, and fabric traffic. The rtop binary must be reachable at the same path
+on every node (a shared home or project directory).
+
+- `--no-cluster` starts no agents.
+- `--cluster-wrapper "WORDS"` runs the agent through a launcher, e.g.
+  `--cluster-wrapper "apptainer exec --nv image.sif"` when rtop runs inside a
+  container whose image holds its dependencies.
+
+GPU telemetry needs access to `/dev/nvidia*`. Slurm with
+`ConstrainDevices=yes` grants a step only the GPUs it requested, so start the
+shell that runs rtop with all of the node's GPUs, for example
+`srun --jobid=<job> --overlap -w <node> --gres=gpu:4 --pty bash`; rtop says
+which device nodes it may not open otherwise. Fabric traffic comes from HPE
+Slingshot (CXI) NIC counters (`/sys/class/net/hsn*/device/telemetry`), which
+include the kernel-bypass RDMA traffic the IP counters miss.
+
 ## `rtop --stats`
 
 `--stats` takes two samples of every collector, separated by `--interval`, so
@@ -351,7 +383,7 @@ rates are measured, then prints the graph and exits.
 | `--stats` | | Print the graph as YAML and exit |
 | `--json` | | Emit JSON instead of YAML |
 | `--interval` | `1s` | Rate measurement window (`500ms`, `2s`, `1m`) |
-| `--timeout` | `5s` | Upper bound on collection time |
+| `--timeout` | `10s` | Upper bound on collection time (agents on other Slurm nodes need a few seconds to start) |
 | `--strict` | | Exit with status 2 if any collector did not deliver |
 | `--demo`, `--sysroot DIR` | | Observe the demo machine or a captured tree |
 
@@ -651,8 +683,10 @@ plus a build with the minimum supported Rust version.
   on devices that serve requests in parallel.
 - **CPU frequency is what cpufreq reports**, not a measured effective
   frequency.
-- **No history on disk, no alerting, no remote agents.** rtop shows the live
-  state and short in-memory history of one machine.
+- **No history on disk, no alerting.** rtop shows the live state and short
+  in-memory history of one machine, plus, inside a Slurm job, the host, GPU
+  and fabric summary of the job's other nodes; processes, storage and sockets
+  of other nodes are not shown.
 - **Process actions are signals.** Changing priority or CPU affinity is not
   implemented.
 - **The project is young.** The `--stats` document is versioned

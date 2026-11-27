@@ -82,6 +82,7 @@ string_enum!(
         PowerSupply => "power_supply",
         FirewallRule => "firewall_rule",
         Collector => "collector",
+        ClusterNode => "cluster_node",
     }
 );
 

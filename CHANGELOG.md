@@ -10,6 +10,12 @@ interfaces covered by semantic versioning are the command-line options, the
 
 ### Added
 
+- Slurm clusters: inside a Slurm job rtop starts one `rtop --agent` per
+  other node of the job (`srun --overlap --gres=gpu:<n>`), adds those
+  nodes' GPUs to the GPU view (`<node> #<index> <name>`) and shows the
+  job's nodes in a new Nodes view (`c`, present only inside a Slurm job)
+  with Slurm state, CPU, load, memory, GPU utilisation and power, and
+  fabric traffic. `--no-cluster` and `--cluster-wrapper` control it.
 - Fabric traffic of HPE Slingshot (CXI) NICs, including RDMA, per
   interface and for the host.
 
@@ -44,6 +50,8 @@ interfaces covered by semantic versioning are the command-line options, the
   does not cover exists. On a 4-GPU node the GPU collector's sample time in
   `rtop --stats` fell from 38.5 ms to about 15 ms.
 - `make test` no longer runs the multi-minute heap-growth test.
+- `rtop --stats --timeout` defaults to 10 s, so agents on other Slurm nodes
+  can report.
 
 ## [1.2.0] - 2026-11-25
 

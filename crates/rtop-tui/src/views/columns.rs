@@ -661,6 +661,145 @@ pub fn gpus(g: &SystemGraph) -> Vec<Column<'_>> {
     ]
 }
 
+/// A node metric; for rtop's own node, taken from this machine's host and
+/// GPU entities (agents run only on the other nodes).
+fn node_value(g: &SystemGraph, n: &Node, key: &str) -> Option<f64> {
+    if !matches!(n.attr("local"), Some(rtop_core::Attr::Bool(true))) {
+        return n.f64(key);
+    }
+    let local_gpus = || {
+        g.nodes_of(rtop_core::EntityKind::Gpu)
+            .filter(|n| n.text("node").is_none())
+    };
+    match key {
+        "gpus" => Some(local_gpus().count() as f64),
+        "gpu_usage_percent" => {
+            let v: Vec<f64> = local_gpus().filter_map(|n| n.f64(key)).collect();
+            (!v.is_empty()).then(|| v.iter().sum::<f64>() / v.len() as f64)
+        }
+        "gpu_power_w" => {
+            let v: Vec<f64> = local_gpus().filter_map(|n| n.f64("power_w")).collect();
+            (!v.is_empty()).then(|| v.iter().sum())
+        }
+        k => g
+            .node(&rtop_core::EntityId::host())
+            .and_then(|h| h.f64(k))
+            .or_else(|| n.f64(k)),
+    }
+}
+
+fn nv<'g>(
+    g: &'g SystemGraph,
+    key: &'static str,
+    f: Fmt,
+) -> impl Fn(&RowId, usize, usize) -> (String, Style) + 'g {
+    move |r, _, _| match node(g, r).and_then(|n| node_value(g, n, key)) {
+        Some(v) => (fmt::value(v, f), Style::default()),
+        None => ("N/A".into(), theme::faint()),
+    }
+}
+
+pub fn cluster_nodes(g: &SystemGraph) -> Vec<Column<'_>> {
+    vec![
+        Column::new("NODE", 8, move |r, _, _| {
+            let n = node(g, r);
+            let local =
+                n.is_some_and(|n| matches!(n.attr("local"), Some(rtop_core::Attr::Bool(true))));
+            (
+                format!(
+                    "{}{}",
+                    n.map_or("", |n| n.label()),
+                    if local { " (here)" } else { "" }
+                ),
+                Style::default().add_modifier(Modifier::BOLD),
+            )
+        })
+        .flex()
+        .sort(SortKey::Name),
+        Column::new("STATE", 10, text(g, "slurm_state")).prio(2),
+        Column::new("AGENT", 10, move |r, _, _| {
+            let a = node(g, r).and_then(|n| n.text("agent")).unwrap_or("");
+            let st = match a {
+                "streaming" | "local" => theme::dim(),
+                "starting" => theme::faint(),
+                _ => Style::default().fg(theme::WARN),
+            };
+            (a.to_owned(), st)
+        })
+        .prio(3),
+        Column::new("CPU%", 6, move |r, _, _| {
+            match node(g, r).and_then(|n| node_value(g, n, "cpu_usage_percent")) {
+                Some(v) => (
+                    fmt::value(v, Fmt::Percent),
+                    Style::default().fg(theme::level(v)),
+                ),
+                None => ("N/A".into(), theme::faint()),
+            }
+        })
+        .right()
+        .sort(SortKey::Cpu),
+        Column::new("LOAD", 6, nv(g, "load_1", Fmt::Float1))
+            .right()
+            .prio(1),
+        Column::new("MEMORY", 19, move |r, _, _| {
+            let n = node(g, r);
+            let used = n.and_then(|n| node_value(g, n, "memory_used_bytes"));
+            let total = n.and_then(|n| node_value(g, n, "memory_total_bytes"));
+            match (used, total) {
+                (Some(u), Some(t)) => (
+                    format!(
+                        "{} / {}",
+                        fmt::value(u, Fmt::Bytes),
+                        fmt::value(t, Fmt::Bytes)
+                    ),
+                    Style::default(),
+                ),
+                _ => ("N/A".into(), theme::faint()),
+            }
+        })
+        .right()
+        .sort(SortKey::Mem)
+        .prio(2),
+        Column::new("GPUS", 4, nv(g, "gpus", Fmt::Count)).right(),
+        Column::new("GPU UTIL", 10, move |r, _, w| {
+            let v = node(g, r).and_then(|n| node_value(g, n, "gpu_usage_percent"));
+            (
+                crate::widgets::bar_text(v, w),
+                Style::default().fg(theme::ACCENT),
+            )
+        })
+        .prio(3),
+        Column::new("GPU%", 6, move |r, _, _| {
+            match node(g, r).and_then(|n| node_value(g, n, "gpu_usage_percent")) {
+                Some(v) => (
+                    fmt::value(v, Fmt::Percent),
+                    Style::default().fg(theme::level(v)),
+                ),
+                None => ("N/A".into(), theme::faint()),
+            }
+        })
+        .right()
+        .sort(SortKey::Gpu),
+        Column::new("GPU POWER", 9, nv(g, "gpu_power_w", Fmt::Watts))
+            .right()
+            .prio(2),
+        Column::new(
+            "FABRIC ↓",
+            10,
+            nv(g, "fabric_rx_bytes_per_second", Fmt::Rate),
+        )
+        .right()
+        .prio(2),
+        Column::new(
+            "FABRIC ↑",
+            10,
+            nv(g, "fabric_tx_bytes_per_second", Fmt::Rate),
+        )
+        .right()
+        .prio(2),
+    ]
+}
+
 pub fn gpu_clients(g: &SystemGraph) -> Vec<Column<'_>> {
     vec![
         Column::new("PROCESS", 18, move |r, _, _| {
@@ -1054,6 +1193,7 @@ pub fn for_panel<'g>(
         Panel::Containers | Panel::Services => workloads(g),
         Panel::Gpus => gpus(g),
         Panel::GpuClients => gpu_clients(g),
+        Panel::ClusterNodes => cluster_nodes(g),
         Panel::Sensors => sensors(g),
         Panel::Batteries => power(g),
         Panel::Events => events(g),
@@ -1068,6 +1208,7 @@ pub fn empty_text(p: Panel) -> &'static str {
         Panel::Containers => "No containers: no Docker/Podman/containerd cgroups found",
         Panel::Gpus => "No supported GPU or accelerator found",
         Panel::GpuClients => "No process is using a GPU (or per-process accounting is unavailable)",
+        Panel::ClusterNodes => "Not running inside a Slurm job (or scontrol is unavailable)",
         Panel::Communication => "No process-to-process connections observed",
         Panel::Batteries => "No battery or power supply",
         Panel::Events => "No security-related events observed since start",
