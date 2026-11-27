@@ -10,6 +10,9 @@ interfaces covered by semantic versioning are the command-line options, the
 
 ### Added
 
+- Fabric traffic of HPE Slingshot (CXI) NICs, including RDMA, per
+  interface and for the host.
+
 - Full NVIDIA GPU detail through NVML: identity (UUID, serial, VBIOS, board
   part, architecture, compute capability, cores, bus width), driver, CUDA and
   NVML versions, graphics/SM/memory/video clocks with their maxima, P-state

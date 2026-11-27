@@ -22,6 +22,8 @@ pub struct NetworkCollector {
     env: Env,
     rates: RateTracker<(String, &'static str)>,
     physical: HashMap<String, bool>,
+    /// Whether an interface is a fabric NIC with hardware telemetry.
+    fabric: HashMap<String, bool>,
 }
 
 impl NetworkCollector {
@@ -30,8 +32,14 @@ impl NetworkCollector {
             env,
             rates: RateTracker::new(),
             physical: HashMap::new(),
+            fabric: HashMap::new(),
         }
     }
+}
+
+/// A CXI telemetry counter: `<value>@<seconds>.<nanoseconds>`.
+pub fn cxi_counter(text: &str) -> Option<u64> {
+    text.trim().split('@').next()?.parse().ok()
 }
 
 pub fn interface_id(name: &str) -> EntityId {
@@ -58,6 +66,8 @@ impl Collector for NetworkCollector {
         let now = ctx.now;
         let mut patch = ctx.patch(ID).complete(Scope::Nodes(EntityKind::Interface));
         let (mut rx, mut tx, mut have) = (0.0, 0.0, false);
+        // Fabric totals over every fabric NIC; `None` without one.
+        let mut fabric_total: [Option<f64>; 2] = [None, None];
         self.rates.begin();
         let devs = net::net_dev(&text);
         for d in &devs {
@@ -85,6 +95,41 @@ impl Collector for NetworkCollector {
             }
             if let Ok(mtu) = fs.read_u64(&format!("{sys}/mtu")) {
                 n.push_metric("mtu", Metric::u64(mtu));
+            }
+            // HPE Slingshot (CXI) NICs count all traffic, including the
+            // kernel-bypass RDMA the netdev counters never see.
+            let tele = format!("{sys}/device/telemetry");
+            let fabric = physical
+                && *self.fabric.entry(d.name.clone()).or_insert_with(|| {
+                    fs.read_attr(&format!("{tele}/hni_sts_rx_ok_octets"))
+                        .is_ok()
+                });
+            if fabric {
+                n = n.attr("fabric", "cxi");
+                for (k, f) in [("fabric_link", "link"), ("fabric_speed", "speed")] {
+                    if let Ok(v) = fs.read_attr(&format!("{sys}/device/port/{f}")) {
+                        n = n.text(k, &v);
+                    }
+                }
+                for (k, f) in [
+                    ("fabric_rx_bytes_per_second", "hni_sts_rx_ok_octets"),
+                    ("fabric_tx_bytes_per_second", "hni_sts_tx_ok_octets"),
+                ] {
+                    if let Some(v) = fs
+                        .read_attr(&format!("{tele}/{f}"))
+                        .ok()
+                        .and_then(|t| cxi_counter(&t))
+                    {
+                        let m =
+                            self.rates
+                                .metric((d.name.clone(), k), v, now, CounterWidth::Bits64);
+                        let slot = usize::from(k.starts_with("fabric_tx"));
+                        if let Some(r) = m.as_f64() {
+                            *fabric_total[slot].get_or_insert(0.0) += r;
+                        }
+                        n.push_metric(k, m);
+                    }
+                }
             }
             if fs.read_dir(&format!("{sys}/wireless")).is_ok() {
                 n = n.attr("wireless", true);
@@ -135,8 +180,17 @@ impl Collector for NetworkCollector {
         }
         self.physical
             .retain(|k, _| devs.iter().any(|d| &d.name == k));
+        self.fabric.retain(|k, _| devs.iter().any(|d| &d.name == k));
 
         let mut h = NodeUpdate::new(EntityKind::Host, EntityId::host());
+        for (k, v) in [
+            ("fabric_rx_bytes_per_second", fabric_total[0]),
+            ("fabric_tx_bytes_per_second", fabric_total[1]),
+        ] {
+            if let Some(v) = v {
+                h.push_metric(k, Metric::f64(v));
+            }
+        }
         let agg = |v: f64| {
             if have {
                 Metric::f64(v)
@@ -177,5 +231,17 @@ impl Collector for NetworkCollector {
             patch,
             degraded: None,
         })
+    }
+}
+
+#[cfg(test)]
+mod fabric_tests {
+    #[test]
+    fn cxi_counters_parse_value_before_timestamp() {
+        assert_eq!(
+            super::cxi_counter("1576540091879@1795739423.667124381\n"),
+            Some(1_576_540_091_879)
+        );
+        assert_eq!(super::cxi_counter("garbage"), None);
     }
 }

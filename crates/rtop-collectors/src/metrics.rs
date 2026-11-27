@@ -317,6 +317,8 @@ specs! {
     "pcie_link_width_max" => "Highest PCIe link width (lanes)",
     "nvlink_links" => "NVLinks present",
     "nvlink_links_active" => "NVLinks active",
+    "fabric_rx_bytes_per_second" => "Fabric (Slingshot/CXI) bytes received, including RDMA",
+    "fabric_tx_bytes_per_second" => "Fabric (Slingshot/CXI) bytes sent, including RDMA",
     "nvlink_tx_bytes_per_second" => "NVLink data sent over all links",
     "nvlink_rx_bytes_per_second" => "NVLink data received over all links",
     "c2c_links" => "Chip-to-chip (CPU-GPU) links",
