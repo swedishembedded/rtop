@@ -507,3 +507,48 @@ fn overview_card_and_table_borders_drag_without_switching_views() {
     let hits = w.drag(size, (edge, table.y + 5), (edge - 20, table.y + 5));
     assert_eq!(rect(&hits, Panel::Processes).width, table.width - 20);
 }
+
+#[test]
+fn gpu_view_details_the_gpu_under_the_cursor() {
+    let mut w = world();
+    w.keys("7");
+    w.ev(Event::GraphChanged);
+    let title_of = |text: &str| {
+        text.lines()
+            .find(|l| l.contains(" · 0000:"))
+            .map(str::to_owned)
+            .expect("a GPU detail panel")
+    };
+    // Without a cursor the first GPU is detailed; `j` puts the cursor on it.
+    let (unselected, _) = w.draw(160, 50);
+    w.keys("j");
+    let (first, _) = w.draw(160, 50);
+    let first_title = title_of(&first);
+    assert_eq!(title_of(&unselected), first_title);
+    w.keys("j");
+    let (second, _) = w.draw(160, 50);
+    assert_ne!(title_of(&second), first_title, "detail follows the cursor");
+    // The NVIDIA GPU's detail includes its limits, clocks and identity.
+    w.keys("kkk");
+    let mut found = false;
+    for _ in 0..3 {
+        let (t, _) = w.draw(160, 50);
+        if t.contains("Demo RTX Laptop GPU · 0000:01:00.0") {
+            for want in [
+                "Thermal",
+                "slowdown",
+                "98°C",
+                "sw power cap",
+                "Ada",
+                "GeForce RTX",
+                "NVLinks up",
+            ] {
+                assert!(t.contains(want), "missing {want:?}:\n{t}");
+            }
+            found = true;
+            break;
+        }
+        w.keys("j");
+    }
+    assert!(found, "the NVIDIA GPU can be selected");
+}

@@ -314,7 +314,11 @@ pub fn label_of(g: &SystemGraph, id: &EntityId) -> String {
     match g.node(id) {
         Some(n) => match n.attr("pid").and_then(|p| p.as_u64()) {
             Some(pid) => format!("{} ({pid})", n.label()),
-            None => n.label().to_owned(),
+            // Identical GPUs are told apart by their driver index.
+            None => match n.attr("index").and_then(|i| i.as_u64()) {
+                Some(i) if id.kind() == Some(EntityKind::Gpu) => format!("#{i} {}", n.label()),
+                _ => n.label().to_owned(),
+            },
         },
         None => id.to_string(),
     }

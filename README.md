@@ -482,13 +482,26 @@ rtop --stats --strict > snapshot.yaml || echo "incomplete snapshot"
 | Containers, services | cgroup v2 | CPU, throttling, memory, working-set estimate, PIDs, I/O |
 | Docker | Engine API over its Unix socket | Names, images, health, restarts, mounts, volumes |
 | Sensors and power | hwmon, thermal zones, RAPL, power supplies | Temperatures, fans, package power, battery energy and health |
-| GPU | DRM sysfs, DRM fdinfo, NVML | Device utilisation and memory; per-process engine time and memory |
+| GPU | DRM sysfs, DRM fdinfo, NVML, `/proc/driver/nvidia` | Utilisation, memory, thermals, power and limits, clocks and throttle reasons, PCIe/NVLink links, ECC and row remapping, identity; per-process engine time (NVIDIA: SM utilisation) and memory |
 | Security | `/dev/kmsg`, conntrack statistics | LSM denials, OOM kills, firewall log matches, conntrack drops |
 | Firewall | nftables over `NETLINK_NETFILTER` (read-only dump) | Per-rule packet and byte totals and rates for rules that have a `counter`; rules without one are `N/A`, never zero; needs `CAP_NET_ADMIN` |
 | rtop itself | procfs | Its own CPU, memory, threads and nice value |
 
-NVML is loaded at runtime from `libnvidia-ml.so.1` when it is present; rtop
-has no build-time dependency on NVIDIA software. Process environment variables
+NVML is loaded at runtime from `libnvidia-ml.so.1` (the loader's search path,
+then the usual driver locations: `/usr/lib64`, `/usr/lib/<arch>-linux-gnu`,
+`/usr/local/nvidia/lib64`, Apptainer's `/.singularity.d/libs`, WSL); rtop has
+no build-time dependency on NVIDIA software. NVML queries are tiered by cost:
+identity and limits once, configuration and error counters every 30 samples,
+live values every sample, and the per-GPU process list (milliseconds on a busy
+GPU) only while the GPU view or a process inspection shows it. When NVML cannot
+be used (library missing, driver mismatch, no access to `/dev/nvidia*`, e.g.
+in a Slurm step without `--gres=gpu`), NVIDIA GPUs are still listed from
+`/proc/driver/nvidia` and the GPU view says why telemetry is missing; NVML is
+retried every 30 samples.
+
+In the GPU view (`7`) the panel under the GPU table details the GPU under the
+cursor; click a GPU or move with `j`/`k`. `Enter` opens the same detail with
+every metric and relationship. Process environment variables
 are never read, because they routinely hold credentials.
 
 ## Permissions and privileges
@@ -629,9 +642,10 @@ plus a build with the minimum supported Rust version.
   accounting, but no names or images from a daemon.
 - **Static (musl) release binaries cannot load NVML**, which is a shared
   library; use the glibc build for NVIDIA GPU telemetry.
-- **The NVML path has not been validated on physical NVIDIA hardware in the
-  test suite.** The AMD and Intel paths are exercised through the demo
-  machine's DRM data.
+- **The NVML path is exercised in the test suite only through the demo
+  machine's simulated NVIDIA GPU**; the real driver binding is checked by
+  hand on NVIDIA hardware (GH200). The AMD and Intel paths are exercised
+  through the demo machine's DRM data.
 - **Storage latency and utilisation are block-layer accounting**, not
   application-observed latency, and 100% utilisation does not mean saturation
   on devices that serve requests in parallel.

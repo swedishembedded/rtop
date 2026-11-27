@@ -442,7 +442,8 @@ fn history_is_bounded_by_live_entities_not_by_runtime() {
     // Not inspecting anything: only host, CPU, GPU, interface and disk
     // series remain, and their number does not change with time.
     assert_eq!(h.s.history.len(), after_session);
-    let hardware = 12 + 16 + 2 + 4 * 2 + 6 * 2;
+    // host + CPUs + 3 GPUs x (usage, VRAM, power) + interfaces + disks
+    let hardware = 12 + 16 + 3 * 3 + 4 * 2 + 6 * 2;
     assert!(
         h.s.history.len() <= hardware,
         "{} series",

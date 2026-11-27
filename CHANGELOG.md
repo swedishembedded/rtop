@@ -10,10 +10,36 @@ interfaces covered by semantic versioning are the command-line options, the
 
 ### Added
 
+- Full NVIDIA GPU detail through NVML: identity (UUID, serial, VBIOS, board
+  part, architecture, compute capability, cores, bus width), driver, CUDA and
+  NVML versions, graphics/SM/memory/video clocks with their maxima, P-state
+  and clock event (throttle) reasons, power and its limits, temperature
+  thresholds and memory temperature, fan, encoder/decoder, PCIe link and
+  replays, NVLinks, ECC and row-remapping counters, persistence/compute/MIG
+  modes, and per-process SM utilisation.
+- The GPU view details the GPU under the cursor (click or `j`/`k`) in
+  titled sections (load, memory, power, thermal, clocks, links, errors,
+  configuration, identity, driver and firmware, and everything else the
+  collector reports), beside a pane of utilisation, memory and power
+  history; a GPU's inspection page shows the same panels. GPUs are
+  labelled with their driver index (`#0 …`).
+- NVLink send/receive rates (while the GPU view is shown), C2C links,
+  energy since driver load, brand, NUMA node, GSP firmware, InfoROM, board
+  and PCI ids.
+- When this process may open only some GPUs (e.g. a Slurm step granted
+  fewer GPUs than the node has), the GPU view names the denied
+  `/dev/nvidia*` nodes and the Slurm job and step.
+- NVIDIA GPUs stay visible from `/proc/driver/nvidia` when NVML cannot be
+  used, and the GPU view says why; NVML is searched for in the usual driver
+  locations and retried every 30 samples.
 - `make test/leak` runs the heap-growth test in a release build.
 
 ### Changed
 
+- NVML queries are tiered by cost, and the per-GPU process list is read only
+  while shown; the DRM descriptor scan runs only when a DRM GPU that NVML
+  does not cover exists. On a 4-GPU node the GPU collector's sample time in
+  `rtop --stats` fell from 38.5 ms to about 15 ms.
 - `make test` no longer runs the multi-minute heap-growth test.
 
 ## [1.2.0] - 2026-11-25

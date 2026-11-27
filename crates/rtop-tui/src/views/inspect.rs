@@ -23,7 +23,7 @@ use crate::hits::{Axis, HitMap};
 use crate::theme;
 use crate::widgets::{framed, panel};
 
-fn fmt_for(key: &str) -> Fmt {
+pub(crate) fn fmt_for(key: &str) -> Fmt {
     match unit_of(key) {
         Unit::Percent => Fmt::Percent,
         Unit::Bytes => Fmt::Bytes,
@@ -39,7 +39,7 @@ fn fmt_for(key: &str) -> Fmt {
     }
 }
 
-fn attr_text(a: &Attr) -> String {
+pub(crate) fn attr_text(a: &Attr) -> String {
     match a {
         Attr::Text(s) => s.clone(),
         Attr::Int(v) => v.to_string(),
@@ -114,8 +114,9 @@ pub fn render(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
     );
 
     let is_process = id.kind() == Some(EntityKind::Process);
+    let gpu = node.filter(|n| n.id.kind() == Some(EntityKind::Gpu));
     let wide = area.width >= 110;
-    let body = if is_process && r[1].height >= 16 {
+    let body = if (is_process || gpu.is_some()) && r[1].height >= 16 {
         resizable(
             Axis::Vertical,
             r[1],
@@ -181,7 +182,10 @@ pub fn render(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
     panel_table(f, top[1], c, 0, hits);
 
     if body.len() > 1 {
-        detail(f, body[1], c);
+        match gpu {
+            Some(n) => super::gpu::panel(f, body[1], c, n, hits),
+            None => detail(f, body[1], c),
+        }
     }
 }
 

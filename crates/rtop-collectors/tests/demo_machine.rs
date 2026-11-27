@@ -31,6 +31,66 @@ fn run(m: &DemoMachine, passes: u32) -> SystemGraph {
 }
 
 #[test]
+fn nvidia_gpu_reports_full_detail_and_its_processes() {
+    let m = DemoMachine::new();
+    let g = run(&m, 2);
+    let gpu = g
+        .node(&EntityId::new(EntityKind::Gpu, "0000:01:00.0"))
+        .expect("demo NVIDIA GPU");
+    assert_eq!(gpu.text("provider"), Some("nvml"));
+    for attr in [
+        "uuid",
+        "architecture",
+        "compute_capability",
+        "vbios_version",
+        "driver_version",
+        "cuda_driver_version",
+        "performance_state",
+        "clock_event_reasons",
+        "compute_mode",
+    ] {
+        assert!(gpu.attr(attr).is_some(), "missing attribute {attr}");
+    }
+    for key in [
+        "gpu_usage_percent",
+        "vram_used_bytes",
+        "vram_total_bytes",
+        "temperature_celsius",
+        "temperature_slowdown_celsius",
+        "power_w",
+        "power_limit_w",
+        "frequency_mhz",
+        "frequency_max_mhz",
+        "memory_clock_mhz",
+        "pcie_link_generation",
+        "pcie_link_width_max",
+        "fan_speed_percent",
+        "encoder_usage_percent",
+    ] {
+        assert!(gpu.f64(key).is_some(), "missing metric {key}");
+    }
+    assert!(gpu.f64("vram_used_bytes") < gpu.f64("vram_total_bytes"));
+    // The inference server runs on it, with memory and SM utilisation.
+    let api = m.identity(1420).unwrap().entity_id();
+    let e = g
+        .edges_of(EdgeKind::UsesGpu)
+        .find(|e| e.key.source == api)
+        .expect("api-server uses the NVIDIA GPU");
+    assert_eq!(e.key.target, gpu.id);
+    assert!(
+        e.metric("gpu_memory_bytes")
+            .and_then(|m| m.as_f64())
+            .unwrap()
+            > 0.0
+    );
+    assert!(
+        e.metric("gpu_usage_percent")
+            .and_then(|m| m.as_f64())
+            .is_some()
+    );
+}
+
+#[test]
 fn first_pass_rates_are_pending_not_zero() {
     let g = run(&DemoMachine::new(), 1);
     let host = g.node(&EntityId::host()).unwrap();
@@ -102,8 +162,8 @@ fn demo_graph_has_connected_workloads() {
     );
 
     // GPUs, sensors, battery, security events.
-    assert_eq!(g.nodes_of(EntityKind::Gpu).count(), 2);
-    assert!(g.edges_of(EdgeKind::UsesGpu).count() >= 1);
+    assert_eq!(g.nodes_of(EntityKind::Gpu).count(), 3);
+    assert!(g.edges_of(EdgeKind::UsesGpu).count() >= 2);
     assert!(g.nodes_of(EntityKind::Sensor).count() >= 5);
     let bat = g.nodes_of(EntityKind::Battery).next().unwrap();
     assert!(bat.f64("time_remaining_seconds").unwrap() > 0.0);

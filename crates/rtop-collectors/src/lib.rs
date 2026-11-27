@@ -171,6 +171,7 @@ pub struct Env {
     pub diag: Arc<dyn SockDiag>,
     pub firewall: Arc<dyn rtop_linux::nftables::FirewallSource>,
     pub disk_health: Arc<dyn rtop_linux::disk_health::DiskHealthSource>,
+    pub nvidia: Arc<dyn rtop_linux::nvml::NvidiaProvider>,
     pub subscriptions: Arc<Subscriptions>,
     /// `USER_HZ` of the observed system.
     pub clock_ticks: u64,
@@ -189,6 +190,7 @@ impl Env {
             diag: Arc::new(rtop_linux::sockdiag::NetlinkDiag::new(fs.clone())),
             firewall: Arc::new(rtop_linux::nftables::Nftables::default()),
             disk_health: Arc::new(rtop_linux::disk_health::DeviceHealth),
+            nvidia: Arc::new(rtop_linux::nvml::Nvml),
             fs,
             subscriptions,
             clock_ticks: rtop_linux::sys::clock_ticks(),
@@ -209,6 +211,7 @@ impl Env {
             diag: Arc::new(rtop_linux::sockdiag::ProcNetDiag::new(fs.clone())),
             firewall: Arc::new(rtop_linux::nftables::NoFirewall),
             disk_health: Arc::new(rtop_linux::disk_health::NoDiskHealth),
+            nvidia: Arc::new(rtop_linux::nvml::NoNvidia),
             fs,
             subscriptions,
             clock_ticks: 100,

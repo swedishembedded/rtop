@@ -52,4 +52,5 @@ collectors ── GraphPatch ──▶ runtime ──▶ graph owner (event loop
   metrics report `not_measurable`. Firewall counters are read from existing
   nftables `counter` expressions only; legacy iptables is not read.
 - Socket relationships cover the network namespace rtop runs in.
-- NVML support is exercised only where an NVIDIA driver is present.
+- NVML support is exercised by tests only through a simulated NVIDIA source
+  (`rtop_linux::nvml::NvidiaProvider`); the driver binding needs real hardware.

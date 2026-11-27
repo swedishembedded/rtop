@@ -676,6 +676,138 @@ struct State {
     fw: Vec<(f64, f64)>,
 }
 
+/// NVIDIA driver of the demo machine: one discrete laptop GPU running the
+/// API server's inference work.
+#[derive(Debug)]
+pub struct DemoNvidia {
+    state: Arc<Mutex<State>>,
+}
+
+#[derive(Debug)]
+struct DemoNvidiaSession {
+    state: Arc<Mutex<State>>,
+    system: Arc<rtop_linux::nvml::NvidiaSystem>,
+    info: Arc<rtop_linux::nvml::NvidiaStatic>,
+}
+
+impl rtop_linux::nvml::NvidiaProvider for DemoNvidia {
+    fn open(&self) -> Result<Box<dyn rtop_linux::nvml::NvidiaSession>, String> {
+        use rtop_linux::nvml::{NvidiaStatic, NvidiaSystem};
+        Ok(Box::new(DemoNvidiaSession {
+            state: self.state.clone(),
+            system: Arc::new(NvidiaSystem {
+                driver_version: Some("999.10".into()),
+                cuda_driver_version: Some("13.0".into()),
+                nvml_version: Some("13.999.10".into()),
+            }),
+            info: Arc::new(NvidiaStatic {
+                index: 0,
+                name: "Demo RTX Laptop GPU".into(),
+                pci: "0000:01:00.0".into(),
+                uuid: Some("GPU-00000000-0000-4000-8000-00000000d3e0".into()),
+                serial: Some("0000000000000".into()),
+                vbios_version: Some("99.00.00.00.01".into()),
+                board_part_number: Some("DEMO-0001".into()),
+                architecture: Some("Ada"),
+                compute_capability: Some("8.9".into()),
+                cuda_cores: Some(4608),
+                memory_bus_width_bits: Some(128),
+                graphics_clock_max_mhz: Some(2370),
+                sm_clock_max_mhz: Some(2370),
+                memory_clock_max_mhz: Some(8001),
+                video_clock_max_mhz: Some(1950),
+                pcie_generation_max: Some(4),
+                pcie_width_max: Some(8),
+                temperature_shutdown_celsius: Some(101),
+                temperature_slowdown_celsius: Some(98),
+                temperature_max_operating_celsius: Some(87),
+                memory_temperature_max_celsius: None,
+                power_limit_min_w: Some(35.0),
+                power_limit_max_w: Some(115.0),
+                power_limit_default_w: Some(80.0),
+                nvlink_links: Some(4),
+                brand: Some("GeForce RTX"),
+                numa_node: Some(0),
+                gsp_firmware_version: Some("999.10".into()),
+                inforom_version: Some("G000.0000.00.01".into()),
+                board_id: Some(0x100),
+                pci_device_id: Some("0x000010de".into()),
+                pci_subsystem_id: Some("0x00000000".into()),
+                graphics_clock_boost_mhz: Some(2370),
+                c2c_links: Some(2),
+                c2c_link_bandwidth_bytes_per_second: Some(40_000_000_000),
+                display_mode: Some(false),
+            }),
+        }))
+    }
+}
+
+impl rtop_linux::nvml::NvidiaSession for DemoNvidiaSession {
+    fn sample(&mut self, processes: bool) -> Result<rtop_linux::nvml::NvidiaSample, String> {
+        use rtop_linux::nvml::{
+            NvidiaConfig, NvidiaDevice, NvidiaHealth, NvidiaProcess, NvidiaSample,
+        };
+        let s = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        let t = s.t;
+        let wave = |f: f64, ph: f64| (t * f + ph).sin();
+        let busy = (62.0 + 20.0 * wave(0.4, 0.5)).round();
+        let serving = s.procs.iter().any(|p| p.pid == 1420);
+        Ok(NvidiaSample {
+            problems: Vec::new(),
+            system: self.system.clone(),
+            devices: vec![NvidiaDevice {
+                info: self.info.clone(),
+                config: NvidiaConfig {
+                    persistence_mode: Some(true),
+                    compute_mode: Some("default"),
+                    mig_mode: None,
+                    ecc_mode: Some(false),
+                    nvlink_links_active: Some(4),
+                },
+                health: NvidiaHealth {
+                    pcie_replays_total: Some(3),
+                    energy_mj_total: Some((4.2e9 + t * 68_000.0) as u64),
+                    c2c_active: Some(true),
+                    ..Default::default()
+                },
+                gpu_usage_percent: Some(busy),
+                memory_busy_percent: Some((busy * 0.45).round()),
+                vram_total_bytes: Some(8 * GIB),
+                vram_used_bytes: Some(5 * GIB + 312 * MIB),
+                vram_reserved_bytes: Some(284 * MIB),
+                temperature_celsius: Some((71.0 + 4.0 * wave(0.2, 0.0)).round()),
+                memory_temperature_celsius: None,
+                power_w: Some(((68.0 + 9.0 * wave(0.4, 0.5)) * 100.0).round() / 100.0),
+                power_limit_w: Some(80.0),
+                fan_speed_percent: Some((48.0 + 6.0 * wave(0.1, 0.0)).round()),
+                graphics_clock_mhz: Some(2040),
+                sm_clock_mhz: Some(2040),
+                memory_clock_mhz: Some(8001),
+                video_clock_mhz: Some(1710),
+                performance_state: Some(0),
+                clock_event_reasons: Some(0x4),
+                encoder_usage_percent: Some(0.0),
+                decoder_usage_percent: Some(9.0),
+                pcie_generation: Some(4),
+                pcie_width: Some(8),
+                nvlink_tx_kib_total: processes.then_some((t * 2.5e6) as u64),
+                nvlink_rx_kib_total: processes.then_some((t * 1.9e6) as u64),
+                processes: if processes && serving {
+                    vec![NvidiaProcess {
+                        pid: 1420,
+                        used_memory_bytes: Some(4 * GIB + 896 * MIB),
+                        graphics: false,
+                        sm_usage_percent: Some((busy * 0.9).round()),
+                    }]
+                } else {
+                    Vec::new()
+                },
+                error: None,
+            }],
+        })
+    }
+}
+
 /// The simulated machine.
 #[derive(Debug, Clone)]
 pub struct DemoMachine {
@@ -971,6 +1103,9 @@ impl DemoMachine {
             state: self.state.clone(),
         });
         env.disk_health = Arc::new(DemoDiskHealth);
+        env.nvidia = Arc::new(DemoNvidia {
+            state: self.state.clone(),
+        });
         env.firewall = Arc::new(DemoFirewall {
             state: self.state.clone(),
         });

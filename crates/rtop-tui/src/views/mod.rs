@@ -6,6 +6,7 @@
 
 pub mod columns;
 pub mod cpugrid;
+pub mod gpu;
 pub mod inspect;
 pub mod modals;
 
@@ -720,7 +721,7 @@ fn emergency(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
     panel_table(f, r[1], c, 0, hits);
 }
 
-fn summary_block(
+pub(super) fn summary_block(
     f: &mut Frame,
     area: Rect,
     title: &str,
@@ -1288,7 +1289,7 @@ pub fn body(f: &mut Frame, area: Rect, c: &Ctx<'_>, hits: &mut HitMap) {
         View::Storage => storage(f, area, c, hits),
         View::Network => network(f, area, c, hits),
         View::Containers => generic(f, area, c, hits, 60, SplitId("containers.tables")),
-        View::Gpu => generic(f, area, c, hits, 45, SplitId("gpu.tables")),
+        View::Gpu => gpu::view(f, area, c, hits),
         View::Security => security(f, area, c, hits),
         View::Sensors => generic(f, area, c, hits, 60, SplitId("sensors.tables")),
     }

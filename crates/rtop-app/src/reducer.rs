@@ -1405,6 +1405,9 @@ pub const HOST_SERIES: &[&str] = &[
     "swap_in_pages_per_second",
 ];
 
+/// Per-GPU series behind the GPU detail graphs.
+const GPU_SERIES: &[&str] = &["gpu_usage_percent", "vram_used_bytes", "power_w"];
+
 fn record_history(s: &mut AppState, g: &SystemGraph) {
     let now = s.now;
     // One history sample per second, however often the graph changes.
@@ -1427,19 +1430,19 @@ fn record_history(s: &mut AppState, g: &SystemGraph) {
             now,
         );
     }
-    for kind in [
-        EntityKind::Gpu,
-        EntityKind::Interface,
-        EntityKind::BlockDevice,
+    for (kind, keys) in [
+        (EntityKind::Gpu, GPU_SERIES),
+        (
+            EntityKind::Interface,
+            &["rx_bytes_per_second", "tx_bytes_per_second"][..],
+        ),
+        (
+            EntityKind::BlockDevice,
+            &["read_bytes_per_second", "write_bytes_per_second"][..],
+        ),
     ] {
         for n in g.nodes_of(kind) {
-            for k in [
-                "gpu_usage_percent",
-                "rx_bytes_per_second",
-                "tx_bytes_per_second",
-                "read_bytes_per_second",
-                "write_bytes_per_second",
-            ] {
+            for &k in keys {
                 if n.metrics.contains_key(k) {
                     s.history.push((n.id.clone(), k), n.f64(k), now);
                 }

@@ -621,7 +621,7 @@ pub fn gpus(g: &SystemGraph) -> Vec<Column<'_>> {
     vec![
         Column::new("GPU", 18, move |r, _, _| {
             (
-                node(g, r).map_or("", |n| n.label()).to_owned(),
+                r.entity().map_or_else(String::new, |id| label_of(g, id)),
                 Style::default().add_modifier(Modifier::BOLD),
             )
         })
@@ -651,9 +651,13 @@ pub fn gpus(g: &SystemGraph) -> Vec<Column<'_>> {
         Column::new("POWER", 8, m(g, "power_w", Fmt::Watts))
             .right()
             .prio(4),
+        Column::new("LIMIT", 8, m(g, "power_limit_w", Fmt::Watts))
+            .right()
+            .prio(1),
         Column::new("CLOCK", 9, m(g, "frequency_mhz", Fmt::Mhz))
             .right()
             .prio(1),
+        Column::new("P", 3, text(g, "performance_state")).prio(1),
     ]
 }
 
