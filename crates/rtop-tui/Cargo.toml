@@ -14,6 +14,7 @@ rtop-collectors.workspace = true
 rtop-actions.workspace = true
 rtop-linux.workspace = true
 ratatui.workspace = true
+crossterm.workspace = true
 unicode-width.workspace = true
 crossbeam-channel.workspace = true
 

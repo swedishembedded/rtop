@@ -378,6 +378,7 @@ dependencies = [
  "crossterm_winapi",
  "derive_more",
  "document-features",
+ "filedescriptor",
  "mio",
  "parking_lot",
  "rustix",
@@ -1525,6 +1526,7 @@ name = "rtop-tui"
 version = "1.2.0"
 dependencies = [
  "crossbeam-channel",
+ "crossterm",
  "proptest",
  "ratatui",
  "rtop-actions",

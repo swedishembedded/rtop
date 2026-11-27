@@ -27,6 +27,10 @@ rtop-actions = { path = "crates/rtop-actions" }
 rtop-app = { path = "crates/rtop-app" }
 rtop-tui = { path = "crates/rtop-tui" }
 ratatui = "0.30"
+# The `/dev/tty` event source polls level-triggered and drains the tty; the
+# default (mio, edge-triggered, one 1 KiB read per wake-up) strands input
+# after a burst of mouse reports, so keys stop arriving.
+crossterm = { version = "0.29", features = ["use-dev-tty"] }
 unicode-width = "0.2"
 proptest = "1.12"
 

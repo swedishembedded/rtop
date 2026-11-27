@@ -541,3 +541,42 @@ fn soak_memory_and_cpu_stay_flat() {
         "CPU per window rose from {cpu_early} to {cpu_late} ticks"
     );
 }
+
+/// A burst of mouse reports larger than one read (pointer motion while the
+/// UI is busy) must not strand the keys that follow it.
+#[test]
+fn ux_keys_work_after_a_mouse_motion_burst() {
+    let mut t = Tui::launch(&["--demo"], 120, 40);
+    t.expect("Memory");
+    let mut burst = String::new();
+    for i in 0..2500 {
+        burst.push_str(&format!("\x1b[<35;{};{}M", 10 + i % 90, 5 + i % 30));
+    }
+    burst.push('\x03');
+    // The write blocks while rtop does not drain its input: write from a
+    // thread so a regression fails the deadline instead of hanging.
+    let mut w = t.master.try_clone().unwrap();
+    std::thread::spawn(move || {
+        let _ = w.write_all(burst.as_bytes());
+    });
+    assert!(
+        t.wait_exit(Duration::from_secs(3)).is_some(),
+        "one Ctrl+C after a mouse burst did not quit"
+    );
+}
+
+/// Ctrl+C quits from every prompt, menu and pending key prefix.
+#[test]
+fn ux_ctrl_c_quits_from_every_mode() {
+    for prefix in [":", "/", "F", "\x1bOP", "m", "g", "s", "z"] {
+        let mut t = Tui::launch(&["--demo"], 120, 40);
+        t.expect("Memory");
+        t.send(prefix);
+        t.master.write_all(b"\x03").unwrap();
+        assert!(
+            t.wait_exit(Duration::from_secs(3)).is_some(),
+            "Ctrl+C after {prefix:?} did not quit:\n{}",
+            t.text()
+        );
+    }
+}

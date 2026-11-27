@@ -309,12 +309,20 @@ impl std::fmt::Debug for Term {
     }
 }
 
+/// Clicks, wheel and button-held drags (`?1000h ?1002h`) in SGR encoding
+/// (`?1006h`). Not any-motion tracking (`?1003h`): hover motion is unused
+/// and would stream input on every pointer move.
+const MOUSE_ON: &[u8] = b"\x1b[?1000h\x1b[?1002h\x1b[?1006h";
+/// Also clears any-motion and urxvt modes another program may have left on.
+const MOUSE_OFF: &[u8] = b"\x1b[?1006l\x1b[?1015l\x1b[?1003l\x1b[?1002l\x1b[?1000l";
+
 fn enter(mouse: bool) -> io::Result<()> {
     ct::enable_raw_mode()?;
     let mut out = io::stdout();
     execute!(out, ct::EnterAlternateScreen, cursor::Hide)?;
     if mouse {
-        execute!(out, event::EnableMouseCapture)?;
+        out.write_all(MOUSE_ON)?;
+        out.flush()?;
     }
     Ok(())
 }
@@ -322,12 +330,8 @@ fn enter(mouse: bool) -> io::Result<()> {
 /// Puts the terminal back the way we found it. Safe to call repeatedly.
 pub fn restore() {
     let mut out = io::stdout();
-    let _ = execute!(
-        out,
-        event::DisableMouseCapture,
-        ct::LeaveAlternateScreen,
-        cursor::Show
-    );
+    let _ = out.write_all(MOUSE_OFF);
+    let _ = execute!(out, ct::LeaveAlternateScreen, cursor::Show);
     let _ = ct::disable_raw_mode();
 }
 

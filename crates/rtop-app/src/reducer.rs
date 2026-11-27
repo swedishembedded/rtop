@@ -1013,6 +1013,14 @@ fn text_edit(input: &mut String, k: Key) -> bool {
 }
 
 fn key(s: &mut AppState, g: &SystemGraph, k: Key, fx: &mut Vec<Effect>) {
+    // Quitting works from every prompt, menu and pending key prefix.
+    if matches!(resolve(&[], k), Resolution::Cmd(Cmd::ForceQuit)) {
+        s.modal = None;
+        s.mode = Mode::Normal;
+        s.pending_keys.clear();
+        run(s, g, Cmd::ForceQuit, fx);
+        return;
+    }
     if let Some(modal) = s.modal.take() {
         modal_key(s, g, modal, k, fx);
         return;

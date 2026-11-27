@@ -50,8 +50,18 @@ interfaces covered by semantic versioning are the command-line options, the
   does not cover exists. On a 4-GPU node the GPU collector's sample time in
   `rtop --stats` fell from 38.5 ms to about 15 ms.
 - `make test` no longer runs the multi-minute heap-growth test.
+- Mouse capture reports clicks, wheel and drags only, no longer every
+  pointer movement.
 - `rtop --stats --timeout` defaults to 10 s, so agents on other Slurm nodes
   can report.
+
+### Fixed
+
+- The interface could stop taking input (keys and Ctrl+C) while it kept
+  updating: after a burst of mouse reports larger than one read, the
+  terminal input was left undrained. Input is now read from `/dev/tty`
+  with level-triggered polling, so every pending byte is consumed.
+- Ctrl+C and F10 quit from every prompt, menu and pending key prefix.
 
 ## [1.2.0] - 2026-11-25
 
